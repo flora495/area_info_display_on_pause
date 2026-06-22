@@ -9,6 +9,12 @@ namespace AreaInfoDisplayOnPause
     /// </summary>
     internal sealed class AreaInfoTextInfo : TextInfo
     {
+        // IStatInfo (the engine's own equivalent) measures with extra trailing characters
+        // ("12345") rather than the exact text, since Font.MeasureString slightly
+        // under-measures the actual drawn width. Without this, the box ends up a few pixels
+        // too narrow and the text overflows past the right edge of its own frame.
+        private const string MeasureBuffer = "12345";
+
         public AreaInfoTextInfo()
             : base(AreaTracker.GetDisplayText(), Color.White)
         {
@@ -16,7 +22,7 @@ namespace AreaInfoDisplayOnPause
 
         public override Point GetSize()
         {
-            base.Text = AreaTracker.GetDisplayText();
+            base.Text = AreaTracker.GetDisplayText() + MeasureBuffer;
             return base.GetSize();
         }
 
