@@ -44,8 +44,11 @@ namespace AreaInfoDisplayOnPause
 
             GuiFormat format = (GuiFormat)s_guiFormatField.GetValue(null);
             format.all_margin /= 2;
-            format.all_padding /= 2;
-            format.all_padding++;
+            // The original CreatePauseInfo halves padding too (it's tuned for a long sentence,
+            // "Objective: Get to the babe at the top!"); for our shorter text that left almost
+            // no breathing room between the text and the border, so keep more of the original
+            // padding instead of halving it.
+            format.all_padding = format.all_padding * 3 / 4;
             format.element_margin = 0;
             format.anchor = new Vector2(0.5f, 1f);
 
