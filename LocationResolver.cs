@@ -25,17 +25,29 @@ namespace AreaInfoDisplayOnPause
         public static Result Resolve(Location[] sortedLocations, int p_screenIndex1)
         {
             // The vanilla data deliberately shares a boundary screen between consecutive areas
-            // (e.g. Redcrown Woods end=6 / Colossal Drain start=6), and that shared screen's
-            // "unlock" is always tagged to the later area, i.e. the engine treats it as the
-            // start of the next area rather than the tail of the previous one. Scanning from
-            // the highest start downward picks that same area on such an overlap.
-            for (int i = sortedLocations.Length - 1; i >= 0; i--)
+            // (e.g. Redcrown Woods end=6 / Colossal Drain start=6), but which of the two a
+            // shared screen belongs to isn't fixed by "prefer the later start": it depends on
+            // each area's own "unlock" field, which is exactly the screen number the engine
+            // itself uses to flip its "new area discovered" state (see LocationComp.
+            // CheckIfNewScreen, which advances only once p_screenIndex1 == unlock). Sometimes
+            // unlock == start (Colossal Drain: start=6, unlock=6 -> wins screen 6 outright), but
+            // often unlock is start+1 or more (False Kings Keep: start=10, unlock=11 -> screen 10
+            // still belongs to the previous area, Colossal Drain). So among overlapping
+            // candidates, only those that have already "unlocked" by this screen are eligible,
+            // and among those, the one with the latest start wins.
+            Location? best = null;
+            for (int i = 0; i < sortedLocations.Length; i++)
             {
                 Location location = sortedLocations[i];
-                if (p_screenIndex1 >= location.start && p_screenIndex1 <= location.end)
+                if (p_screenIndex1 >= location.start && p_screenIndex1 <= location.end && p_screenIndex1 >= location.unlock
+                    && (!best.HasValue || location.start > best.Value.start))
                 {
-                    return new Result(location, true);
+                    best = location;
                 }
+            }
+            if (best.HasValue)
+            {
+                return new Result(best, true);
             }
             for (int i = sortedLocations.Length - 1; i >= 0; i--)
             {

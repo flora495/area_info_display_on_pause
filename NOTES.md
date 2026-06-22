@@ -264,7 +264,14 @@ string displayName = text ?? location_name;
 
 実機の`Content/gui/location_settings.xml`を確認したところ、連続する2エリアは**前のエリアの`end`と次のエリアの`start`が同じ値**になるよう意図的に作られている（例: `REDCROWN_WOODS`(`start=1,end=6`) → `COLOSSAL_DRAIN`(`start=6,end=10`)）。つまり境界のスクリーン（上記の例では6）は両方の`Location`に同時にマッチし、(3)の判定だけでは一意に決まらない。
 
-この境界スクリーンの`unlock`値は常に**後ろ側のエリア**に振られている（上記の例では`COLOSSAL_DRAIN`の`unlock=6`）ことから、ゲーム自身は境界スクリーンを「次のエリアの入口」として扱っていると判断できる。したがって複数マッチした場合は**`start`が最大のもの（より後から始まる方）を優先する**よう統一する。これを反映していなかった実装初期バージョンでは、境界スクリーンが常に手前のエリアの「最後の1枚」として誤表示され（実例: 本来`Colossal Drain 1`であるべき画面が`Redcrown Woods 6`と表示され、次の画面で`Colossal Drain 2`にジャンプし、`Colossal Drain 1`が表示されないまま欠落する）、ユーザーからの実機テストの指摘で発覚・修正した。
+**訂正（再度）**: 「境界スクリーンは常に後ろ側のエリアの`unlock`」という上記の記述は誤りだったことが、`COLOSSAL_DRAIN`→`FALSE_KINGS_KEEP`の境界（実機テストで発覚: 本来`Colossal Drain`最後の1枚であるべき画面10が`False Kings Keep 1`と誤表示された）で判明した。実際のXMLを確認すると：
+
+| 境界スクリーン | 手前のエリア(end) | 後ろのエリア(start, unlock) |
+|---|---|---|
+| 6 | REDCROWN_WOODS(end=6) | COLOSSAL_DRAIN(start=6, **unlock=6**) |
+| 10 | COLOSSAL_DRAIN(end=10) | FALSE_KINGS_KEEP(start=10, **unlock=11**) |
+
+つまり`unlock == start`になっている境界（後ろ側が境界スクリーンそのもので「解禁」される）はむしろ例外で、`unlock`が`start`より1以上大きい境界（後ろ側の「解禁」はその次の画面以降）の方が多い。`JumpKing.exe`を逆コンパイルして確認した`LocationComp.CheckIfNewScreen()`（エンジン自身が「新規エリア発見」ポップアップを出す判定）は、まさにこの`unlock`フィールドを使い、`p_screenIndex1 == location.unlock`の瞬間にのみ「次のエリアに進んだ」と判定している（`start`は一切見ていない）。これに合わせ、`LocationResolver.Resolve`は「複数マッチした場合は`start`が最大のものを優先」という単純なルールをやめ、**`p_screenIndex1 >= location.unlock`を満たす候補だけを対象に、その中で`start`が最大のものを選ぶ**よう修正した（`unlock`を満たさない候補は「まだ解禁されていない」として除外され、結果的に手前のエリアが選ばれる）。これにより両方の境界例で実機の見た目と一致する。
 
 ### データ取得方法
 
@@ -504,3 +511,56 @@ order(area) = そのプレイ（セーブ）中で、そのエリアに初めて
 - カスタムレベル（Workshop）プレイ時の`level.ID`/`level.Root`の値の実際の安定性
 - `LevelManager.Update`へのHarmony postfixパッチ、および`SaveLube.SaveCombinedSaveFile`/`DeleteSaves`/`ProgramStartInitialize`へのリフレクション経由Harmonyパッチが実機で問題なく動くか
 - `language.MENUFACTORY_OBJECTIVE`の実際の文字列内容（埋め込みリソースのため未確認。実機で目視確認すれば十分）
+
+## 実機テストで発覚した不具合3件と修正（このセッション）
+
+### 不具合1: 脇道に入ってから元のエリアに戻ると、誤って「クリア済み」になる
+
+`AreaTracker.OnUpdate`の旧実装は「現在地が`Location`の範囲内に完全マッチしていない（パターンB）かつ`screenIndex1`が直前の完全マッチエリアの`end`を超えている」ことだけを根拠に`MarkCleared`を呼んでいた。Jump Kingの画面番号（`Camera.CurrentScreenIndex1`）はプレイヤーの垂直位置（Y座標）だけから決まる純粋な数値であり、「進む方向の次のエリア」かどうかとは無関係 — ワープ（`TeleportLink`、隣接画面である必要はなく任意の画面番号に飛べる）を使う脇道・隠し部屋では、その画面番号が元のエリアの`end`より大きいか小さいかは脇道の配置次第でしかなく、「`end`を超えた＝先に進んだ」という前提が成り立たない。これが報告された不具合（REDCROWN WOODSの途中の脇道→帰還で誤クリア判定）の直接の原因。
+
+ユーザー自身が指摘した通り「エリア名が変わったとき、それが次のエリアなのかただの脇道なのかを画面番号だけから一般的に区別する方法は無い」（`Location`データに「これは脇道」という属性自体が存在しない）。これを踏まえ、**完全に正確な判定ではなく、報告された具体的なケースを含む大半のケースで誤判定を防ぐ妥協案**として、「クリア済み」と判定する条件を「`end`を超えた」から「`start`昇順で並べたときに直後に来る、特定のエリアに実際に到達した（パターンA完全マッチで）」に変更した（`AreaTracker.FindNextLocation`+`OnUpdate`）。これにより：
+
+- 通常の前進（間に名前の無いすき間がある場合も含む）は変わらず正しく「クリア済み」になる
+- 脇道（それ自体が`Location`として定義されていない、または定義されていても「次のエリア」とは異なるもの）に入って戻ってきても、「次のエリア」に完全マッチしない限り誤ってクリア済みにはならない
+- 残る限界: 脇道がワープ先の画面番号の都合で「次のエリア」自身の`[start,end]`範囲とたまたま重なってしまう場合（非常に稀な配置）は防げない。これは`Location`データだけでは原理的に区別不能なため、これ以上の対応は見送る
+
+### 不具合2: 一番最初のエリアだけ、挑戦回数が増えない
+
+挑戦回数のルールは「より手前の初回訪問順（`order`）のエリアから、より後の初回訪問順のエリアに入ったとき（＝下から登ってきたとき）に+1」。これは2番目以降のエリアには機能するが、一番最初のエリア（`order=0`）には「これより手前の`order`を持つエリア」が存在しないため、ルール上一度も+1されるタイミングが来ない（初回登録の1のままになる）。
+
+ユーザー要望通り、一番最初のエリアだけ特別扱いし、「（`order`の前後関係を問わず）スタート地点に戻ってきたら+1」というルールを追加した（`AreaProgressStore.OnEnterArea`の`isFirstArea`引数）。一番最初のエリアかどうかは、`AreaTracker`が持つ`start`昇順の配列の先頭要素と`start`が一致するかで判定する。
+
+### 不具合3: COLOSSAL DRAINとFALSE KINGS KEEPの境界がおかしい（`Colossal Drain`最後の1枚であるべき画面が`False Kings Keep 1`になる）
+
+「訂正（再度）」の節に詳細を記載。`LocationResolver.Resolve`の境界判定ルールを「`start`が最大の候補を優先」から「`unlock`を満たす（`p_screenIndex1 >= location.unlock`）候補だけの中で`start`が最大のものを優先」に修正した。
+
+## 実機テストで発覚した追加の不具合・要望と対応（このセッション その2）
+
+### 接地判定の追加（`PlayerGroundChecker`）
+
+エンジン自身の「エリア新規発見」ポップアップも`LocationComp.Update`内で`IsPlayerOnGround()`がtrueの時しか進行しない（`EntityComponent.EntityManager.instance.Find<PlayerEntity>().GetComponent<BodyComp>().IsOnGround`、いずれも`public`なので素のC#参照でリフレクション不要）。`AreaTracker.OnUpdate`もこれに合わせ、空中を素通りしただけではエリア到達・クリア判定を進めず、何らかの足場に実際に立った時だけ進行するようにした。
+
+### ページ番号の基準を`start`から`unlock`に変更
+
+`start < unlock`になっているエリア（例: False Kings Keep `start=10, unlock=11`）では、解禁前の画面（10）は`LocationResolver`が前のエリア側に解決するため、このエリアとして表示される最初の画面は常に`unlock`。旧実装は`current = screenIndex1 - start + 1`だったため、その最初の画面が`2/5`のように1ページ目から始まらなかった。`current`/`total`の基準を`unlock`に変更（`current = screenIndex1 - unlock + 1`、`total = end - unlock + 1`）。`unlock == start`（多数派）のケースは計算結果が変わらない。
+
+### 枠サイズがポーズを開き直しても更新されない問題
+
+`DisplayFrame.Initialize()`（`CalculateBounds`含む）は一度しか呼ばれず、`PauseManager`自体もレベル中1回しか構築されない（＝`MenuFactoryPatches.CreatePauseInfoPrefix`も1回しか走らない）ため、枠のサイズはその瞬間のテキスト長で固定されたままになり、その後テキストの長さが変わっても追従しなかった。`PauseManager.SetPause(bool)`（`internal`、リフレクション経由）にpostfixを当て、ポーズに入るたび（`p_pause == true`）に同じ`DisplayFrame`の`Initialize()`を再実行するようにした（`MenuFactoryPatches.s_displayFrame`/`SetPausePostfix`）。
+
+### テキストの中央揃え
+
+枠サイズの計測時（`GetSize()`）だけ`MeasureBuffer`("12345")を足してテキストより少し広めに測っているが、描画時（`Draw()`）は実際のテキストだけを描画し、かつエンジンの`GuiFormat.DrawMenuItems`は常に左詰めで描く。その結果、枠の右側に`MeasureBuffer`分の余白が残っていた。`Draw()`側で`MeasureBuffer`の測定幅の半分だけ描画位置を右にずらし、見た目上中央に来るようにした（`AreaInfoTextInfo.Draw`）。
+
+### 枠の余白(padding)を本家相当に縮小
+
+以前「主分の半分+1」という本家`CreatePauseInfo`の`all_padding`計算を、短いテキスト用にあえて使わず`all_padding`をそのまま(16)使う変更をしていたが、実機で余白が大きすぎると判明。本家と同じ`all_padding / 2 + 1`（16→9）に戻した（`MenuFactoryPatches.CreatePauseInfoPrefix`）。
+
+### 表記の調整
+
+- 総数非表示時の表記を`エリア名 n`から`エリア名 n/x`に変更（総数が分からないことを`x`で明示）
+- 挑戦回数の表記を`(xn)`から`(#n)`に変更（ユーザー希望、短く読みやすい記法）
+
+### 新機能: 到達済みエリア一覧（Area History）
+
+ポーズ画面のmod設定一覧に「Area History」というON/OFFトグルを追加した（`AreaHistoryToggle`、既存の`EnabledToggle`/`AttemptCounterToggle`と同じ`ITextToggle`ベース）。ONにすると、通常のエリア情報表示の代わりに、そのプレイで一度以上到達した全エリアを初回訪問順(`order`)に列挙し、各行に挑戦回数を付けて表示する（`AreaTracker.GetHistoryDisplayText`、データは既存の`AreaProgressStore`からそのまま読む）。表示モード切替で行数・幅が大きく変わるため、トグルを押した瞬間に`MenuFactoryPatches.RefreshDisplayFrame()`で枠サイズを再計算している（ポーズの開閉イベントを介さない、メニュー操作中の即時リフレッシュが必要なケース）。

@@ -16,6 +16,7 @@ namespace AreaInfoDisplayOnPause
     {
         private static FieldInfo s_guiFormatField;
         private static MethodInfo s_addDrawableMethod;
+        private static DisplayFrame s_displayFrame;
 
         public static void Apply(Harmony harmony)
         {
@@ -24,6 +25,35 @@ namespace AreaInfoDisplayOnPause
             s_addDrawableMethod = AccessTools.Method(menuFactoryType, "AddDrawable");
             harmony.Patch(AccessTools.Method(menuFactoryType, "CreatePauseInfo"),
                 prefix: new HarmonyMethod(typeof(MenuFactoryPatches), nameof(CreatePauseInfoPrefix)));
+
+            // PauseManager builds its pause-info DisplayFrame once per level (when its behaviour
+            // tree is first constructed) and DisplayFrame.Initialize() only measures the text and
+            // caches the resulting frame bounds at that single moment. Our text keeps changing
+            // length (area name, page digits, attempt count digits) every time pause is reopened,
+            // so the cached bounds drift out of sync with what's actually drawn. Re-running
+            // Initialize() every time pause is entered keeps the frame matching the text.
+            Type pauseManagerType = AccessTools.TypeByName("JumpKing.PauseMenu.PauseManager");
+            harmony.Patch(AccessTools.Method(pauseManagerType, "SetPause"),
+                postfix: new HarmonyMethod(typeof(MenuFactoryPatches), nameof(SetPausePostfix)));
+        }
+
+        private static void SetPausePostfix(bool p_pause)
+        {
+            if (p_pause)
+            {
+                s_displayFrame?.Initialize();
+            }
+        }
+
+        /// <summary>
+        /// Re-measures the pause-info frame's bounds. SetPausePostfix already covers the
+        /// pause-open case; this is for changes that happen mid-pause-session, like toggling
+        /// AreaHistoryToggle, which swaps the displayed text's line count/length without a
+        /// pause-open event to hang a refresh off of.
+        /// </summary>
+        public static void RefreshDisplayFrame()
+        {
+            s_displayFrame?.Initialize();
         }
 
         /// <summary>
@@ -44,16 +74,17 @@ namespace AreaInfoDisplayOnPause
 
             GuiFormat format = (GuiFormat)s_guiFormatField.GetValue(null);
             format.all_margin /= 2;
-            // The original CreatePauseInfo halves padding too (it's tuned for a long sentence,
-            // "Objective: Get to the babe at the top!"); for our shorter text that left almost
-            // no breathing room between the text and the border. Keep the full, un-halved
-            // padding instead (a 3px bump out of 9 turned out to be imperceptible in testing).
+            // Match the original CreatePauseInfo's own padding (halved, +1) instead of the full
+            // 16px - keeping the full amount made the gap around the text noticeably larger than
+            // vanilla's own pause-info box.
+            format.all_padding = format.all_padding / 2 + 1;
             format.element_margin = 0;
             format.anchor = new Vector2(0.5f, 1f);
 
             DisplayFrame displayFrame = new DisplayFrame(format, BehaviorTree.BTresult.Running);
             displayFrame.AddChild(new AreaInfoTextInfo());
             displayFrame.Initialize();
+            s_displayFrame = displayFrame;
             s_addDrawableMethod.Invoke(__instance, new object[] { displayFrame });
             __result = displayFrame;
             return false;

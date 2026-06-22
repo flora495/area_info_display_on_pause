@@ -104,8 +104,14 @@ namespace AreaInfoDisplayOnPause
         /// earlier first-visit order (i.e. climbing back up after falling down). Also doubles as
         /// the level-start "quiet" resolve when called with previousStart: null, since a null
         /// previousStart never triggers the attempt-count bump on an already-known area.
+        ///
+        /// The very first area has no earlier-order area below it to climb up from, so under
+        /// the order-comparison rule its attempt count would only ever be set once and never
+        /// bumped again. isFirstArea carves out that one area: falling all the way back down to
+        /// it (from anywhere) counts as a new attempt too, since that's what "starting over"
+        /// looks like for it.
         /// </summary>
-        public static void OnEnterArea(string levelKey, int newStart, int? previousStart)
+        public static void OnEnterArea(string levelKey, int newStart, int? previousStart, bool isFirstArea)
         {
             LevelEntry levelEntry = GetOrCreateLevel(levelKey);
             if (!levelEntry.Areas.TryGetValue(newStart, out AreaEntry newEntry))
@@ -114,8 +120,17 @@ namespace AreaInfoDisplayOnPause
                 s_dirty = true;
                 return;
             }
-            if (previousStart.HasValue
-                && levelEntry.Areas.TryGetValue(previousStart.Value, out AreaEntry previousEntry)
+            if (!previousStart.HasValue)
+            {
+                return;
+            }
+            if (isFirstArea)
+            {
+                newEntry.AttemptCount++;
+                s_dirty = true;
+                return;
+            }
+            if (levelEntry.Areas.TryGetValue(previousStart.Value, out AreaEntry previousEntry)
                 && previousEntry.Order < newEntry.Order)
             {
                 newEntry.AttemptCount++;
@@ -172,6 +187,37 @@ namespace AreaInfoDisplayOnPause
             return s_levels.TryGetValue(levelKey, out LevelEntry levelEntry)
                 && levelEntry.Areas.TryGetValue(start, out AreaEntry entry)
                 && entry.HasFullyCleared;
+        }
+
+        public readonly struct AreaSummary
+        {
+            public AreaSummary(int start, int order, int attemptCount)
+            {
+                Start = start;
+                Order = order;
+                AttemptCount = attemptCount;
+            }
+
+            public int Start { get; }
+            public int Order { get; }
+            public int AttemptCount { get; }
+        }
+
+        /// <summary>
+        /// Every area in levelKey that's been reached at least once, in first-visit order.
+        /// </summary>
+        public static List<AreaSummary> GetVisitedAreas(string levelKey)
+        {
+            var result = new List<AreaSummary>();
+            if (s_levels.TryGetValue(levelKey, out LevelEntry levelEntry))
+            {
+                foreach (KeyValuePair<int, AreaEntry> pair in levelEntry.Areas)
+                {
+                    result.Add(new AreaSummary(pair.Key, pair.Value.Order, pair.Value.AttemptCount));
+                }
+            }
+            result.Sort((a, b) => a.Order.CompareTo(b.Order));
+            return result;
         }
 
         private static LevelEntry GetOrCreateLevel(string levelKey)

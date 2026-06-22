@@ -66,6 +66,7 @@
 		<Compile Include="Settings.cs" />
 		<Compile Include="EnabledToggle.cs" />
 		<Compile Include="AttemptCounterToggle.cs" />
+		<Compile Include="AreaHistoryToggle.cs" />
 		<Compile Include="TotalDisplayModeOption.cs" />
 		<Compile Include="LocationSettingsAccessor.cs" />
 		<Compile Include="LocationResolver.cs" />
@@ -76,6 +77,7 @@
 		<Compile Include="MenuFactoryPatches.cs" />
 		<Compile Include="LevelManagerPatches.cs" />
 		<Compile Include="SaveLubePatches.cs" />
+		<Compile Include="PlayerGroundChecker.cs" />
 
 		<Compile Include="Properties\AssemblyInfo.cs" />
 	</ItemGroup>

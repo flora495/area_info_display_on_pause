@@ -82,5 +82,11 @@ namespace AreaInfoDisplayOnPause
         {
             return new AttemptCounterToggle();
         }
+
+        [PauseMenuItemSetting]
+        public static AreaHistoryToggle PauseAreaHistorySetting(object factory, GuiFormat format)
+        {
+            return new AreaHistoryToggle();
+        }
     }
 }

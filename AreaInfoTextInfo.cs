@@ -28,8 +28,17 @@ namespace AreaInfoDisplayOnPause
 
         public override void Draw(int x, int y, bool selected)
         {
-            base.Text = AreaTracker.GetDisplayText();
-            base.Draw(x, y, selected);
+            string text = AreaTracker.GetDisplayText();
+            base.Text = text;
+
+            // The frame was sized to fit text + MeasureBuffer (see GetSize), but only the real
+            // text is drawn here, and JumpKing's own GuiFormat.DrawMenuItems always draws flush
+            // against the frame's left padding - never centered. That leaves a gap on the right
+            // equal to the buffer's measured width. Shifting the draw position right by half of
+            // that gap centers the text within the frame instead.
+            float bufferWidth = base.Font.MeasureString(text + MeasureBuffer).X - base.Font.MeasureString(text).X;
+            int offsetX = (int)(bufferWidth / 2f);
+            base.Draw(x + offsetX, y, selected);
         }
     }
 }
