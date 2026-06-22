@@ -46,9 +46,8 @@ namespace AreaInfoDisplayOnPause
             format.all_margin /= 2;
             // The original CreatePauseInfo halves padding too (it's tuned for a long sentence,
             // "Objective: Get to the babe at the top!"); for our shorter text that left almost
-            // no breathing room between the text and the border, so keep more of the original
-            // padding instead of halving it.
-            format.all_padding = format.all_padding * 3 / 4;
+            // no breathing room between the text and the border. Keep the full, un-halved
+            // padding instead (a 3px bump out of 9 turned out to be imperceptible in testing).
             format.element_margin = 0;
             format.anchor = new Vector2(0.5f, 1f);
 
