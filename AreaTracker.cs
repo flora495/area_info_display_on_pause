@@ -13,6 +13,13 @@ namespace AreaInfoDisplayOnPause
     /// </summary>
     internal static class AreaTracker
     {
+        /// <summary>
+        /// Shown instead of the area name/page/attempt count while in a "gap" between two
+        /// defined Location ranges (pattern B), since none of those numbers refer to anything
+        /// meaningful there.
+        /// </summary>
+        private const string PassageDisplayText = "On the way...";
+
         private static Location[] s_sortedLocations = new Location[0];
         private static string s_currentLevelKey = string.Empty;
         private static int? s_lastResolvedStart;
@@ -96,29 +103,27 @@ namespace AreaInfoDisplayOnPause
                 return string.Empty;
             }
 
+            if (!resolved.IsExactMatch)
+            {
+                return PassageDisplayText;
+            }
+
             Location area = resolved.Area.Value;
             string name = language.ResourceManager.GetString(area.name) ?? area.name;
             int current = screenIndex1 - area.start + 1;
 
             bool showTotal;
-            if (!resolved.IsExactMatch)
+            switch (ModEntry.Settings.DisplayMode)
             {
-                showTotal = false;
-            }
-            else
-            {
-                switch (ModEntry.Settings.DisplayMode)
-                {
-                    case TotalDisplayMode.Always:
-                        showTotal = true;
-                        break;
-                    case TotalDisplayMode.AfterClear:
-                        showTotal = AreaProgressStore.IsCleared(s_currentLevelKey, area.start);
-                        break;
-                    default:
-                        showTotal = false;
-                        break;
-                }
+                case TotalDisplayMode.Always:
+                    showTotal = true;
+                    break;
+                case TotalDisplayMode.AfterClear:
+                    showTotal = AreaProgressStore.IsCleared(s_currentLevelKey, area.start);
+                    break;
+                default:
+                    showTotal = false;
+                    break;
             }
 
             string text = showTotal

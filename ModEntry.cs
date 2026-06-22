@@ -64,5 +64,23 @@ namespace AreaInfoDisplayOnPause
         {
             return new AttemptCounterToggle();
         }
+
+        [PauseMenuItemSetting]
+        public static EnabledToggle PauseEnabledSetting(object factory, GuiFormat format)
+        {
+            return new EnabledToggle();
+        }
+
+        [PauseMenuItemSetting]
+        public static TotalDisplayModeOption PauseTotalDisplayModeSetting(object factory, GuiFormat format)
+        {
+            return new TotalDisplayModeOption();
+        }
+
+        [PauseMenuItemSetting]
+        public static AttemptCounterToggle PauseAttemptCounterSetting(object factory, GuiFormat format)
+        {
+            return new AttemptCounterToggle();
+        }
     }
 }
