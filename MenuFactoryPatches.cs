@@ -1,8 +1,9 @@
 using System;
 using System.Reflection;
-using BehaviorTree;
 using HarmonyLib;
+using JumpKing.PauseMenu;
 using JumpKing.PauseMenu.BT;
+using Microsoft.Xna.Framework;
 
 namespace AreaInfoDisplayOnPause
 {
@@ -13,29 +14,47 @@ namespace AreaInfoDisplayOnPause
     /// </summary>
     internal static class MenuFactoryPatches
     {
-        private static readonly FieldInfo s_childrenField = AccessTools.Field(typeof(IBTcomposite), "m_children");
+        private static FieldInfo s_guiFormatField;
+        private static MethodInfo s_addDrawableMethod;
 
         public static void Apply(Harmony harmony)
         {
             Type menuFactoryType = AccessTools.TypeByName("JumpKing.PauseMenu.MenuFactory");
+            s_guiFormatField = AccessTools.Field(menuFactoryType, "GUI_FORMAT");
+            s_addDrawableMethod = AccessTools.Method(menuFactoryType, "AddDrawable");
             harmony.Patch(AccessTools.Method(menuFactoryType, "CreatePauseInfo"),
-                postfix: new HarmonyMethod(typeof(MenuFactoryPatches), nameof(CreatePauseInfoPostfix)));
+                prefix: new HarmonyMethod(typeof(MenuFactoryPatches), nameof(CreatePauseInfoPrefix)));
         }
 
         /// <summary>
-        /// Replaces the "Objective: ..." line entirely with the area info line, rather than
-        /// adding a second line below it. IBTcomposite (DisplayFrame's base) exposes Children
-        /// as a read-only array with no public way to remove a child, so the backing field is
-        /// swapped via reflection instead.
+        /// Skips the original method and rebuilds the same "Objective" display frame using the
+        /// exact same GuiFormat setup, but with our own text as the only child, so the original
+        /// line is replaced rather than just covered up. Mutating the already-built frame's
+        /// children array after the fact (the previous approach) left the frame border and
+        /// centering looking wrong, since CalculateBounds/the GuiFrame border depend on the
+        /// item(s) present when Initialize() first ran; going through the same construction
+        /// path the engine itself uses avoids that entirely.
         /// </summary>
-        private static void CreatePauseInfoPostfix(ref DisplayFrame __result)
+        private static bool CreatePauseInfoPrefix(object __instance, ref DisplayFrame __result)
         {
             if (!ModEntry.Settings.IsEnabled)
             {
-                return;
+                return true;
             }
-            s_childrenField.SetValue(__result, new IBTnode[] { new AreaInfoTextInfo() });
-            __result.Initialize();
+
+            GuiFormat format = (GuiFormat)s_guiFormatField.GetValue(null);
+            format.all_margin /= 2;
+            format.all_padding /= 2;
+            format.all_padding++;
+            format.element_margin = 0;
+            format.anchor = new Vector2(0.5f, 1f);
+
+            DisplayFrame displayFrame = new DisplayFrame(format, BehaviorTree.BTresult.Running);
+            displayFrame.AddChild(new AreaInfoTextInfo());
+            displayFrame.Initialize();
+            s_addDrawableMethod.Invoke(__instance, new object[] { displayFrame });
+            __result = displayFrame;
+            return false;
         }
     }
 }
