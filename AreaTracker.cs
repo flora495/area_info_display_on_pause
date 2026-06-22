@@ -130,7 +130,9 @@ namespace AreaInfoDisplayOnPause
                 int attempts = AreaProgressStore.GetAttemptCount(s_currentLevelKey, area.start);
                 if (attempts > 0)
                 {
-                    text += $" ({attempts}回目)";
+                    // The game's bitmap MenuFont has no Japanese glyphs (non-ASCII characters
+                    // render as a fallback glyph), so this stays plain ASCII.
+                    text += $" (x{attempts})";
                 }
             }
 

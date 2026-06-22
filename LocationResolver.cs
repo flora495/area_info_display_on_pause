@@ -24,7 +24,12 @@ namespace AreaInfoDisplayOnPause
         /// </summary>
         public static Result Resolve(Location[] sortedLocations, int p_screenIndex1)
         {
-            for (int i = 0; i < sortedLocations.Length; i++)
+            // The vanilla data deliberately shares a boundary screen between consecutive areas
+            // (e.g. Redcrown Woods end=6 / Colossal Drain start=6), and that shared screen's
+            // "unlock" is always tagged to the later area, i.e. the engine treats it as the
+            // start of the next area rather than the tail of the previous one. Scanning from
+            // the highest start downward picks that same area on such an overlap.
+            for (int i = sortedLocations.Length - 1; i >= 0; i--)
             {
                 Location location = sortedLocations[i];
                 if (p_screenIndex1 >= location.start && p_screenIndex1 <= location.end)
