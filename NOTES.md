@@ -6,6 +6,12 @@
 
 **仕様変更（実機テスト後）**: パターンB（すき間・通り道）の表示を、直前のエリア名・枚数・挑戦回数を引き継ぐ方式から、固定の汎用テキスト`"On the way..."`のみを表示する方式に変更した（「確定した仕様」節のパターンBの説明は古い。`AreaTracker.GetDisplayText()`参照）。また、メインメニューだけでなくポーズメニューからも設定（Enabled・総数表示パターン・挑戦回数カウンター）を変更できるようにした（`[PauseMenuItemSetting]`）。
 
+## 用語: 「画面番号」の定義
+
+このドキュメント・実装全体で出てくる`Location.start`/`end`/`unlock`、`Camera.CurrentScreenIndex1`、コード中の`screenIndex1`はすべて同じ数値体系を指す。これを**「画面番号」**と呼ぶことにする。
+
+**定義**: レベル全体の1枚の縦長テクスチャを360ピクセル単位で輪切りにしたときの、各輪切りに振られる1始まりの連番。`JumpKing.Camera`の実装（`UpdateCameraWithVelocity`内の`num = -(int)Math.Floor(p_center.Y / 360f)`）でプレイヤーのY座標から直接算出される。「テクスチャの読み込み順」ではなく「プレイヤーの今いる高さがどの輪切りに当たるか」が本質。ワープが絡まない限り、プレイヤーが登るほど画面番号は大きくなる（このmod全体の前提のひとつ）。
+
 ## 【重要・厳守】実装時の制約（他modから引き継ぎ）
 
 このmodもSteam Workshop上での公開を想定する。**Jump King本体のプログラムやファイル（`C:\Program Files (x86)\Steam\steamapps\common\Jump King\`配下など）は一切変更・上書き・削除してはならない。** 実装は必ず `area_info_display_on_pause/` フォルダの下だけで行うこと（ビルド参照のための読み取り専用パス指定を除く）。本体への変更が必要に見える場合は、Harmonyによる実行時パッチなど、本体ファイルを書き換えない手段で実現する（[keep_babe_skin](../keep_babe_skin/NOTES.md)・[confirm_count_control](../confirm_count_control/MenuFactoryPatches.cs)と同じ方針）。
@@ -561,6 +567,44 @@ order(area) = そのプレイ（セーブ）中で、そのエリアに初めて
 - 総数非表示時の表記を`エリア名 n`から`エリア名 n/x`に変更（総数が分からないことを`x`で明示）
 - 挑戦回数の表記を`(xn)`から`(#n)`に変更（ユーザー希望、短く読みやすい記法）
 
-### 新機能: 到達済みエリア一覧（Area History）
+### 新機能: 到達済みエリア一覧（後述の「Progression Detail」に発展・改名）
 
-ポーズ画面のmod設定一覧に「Area History」というON/OFFトグルを追加した（`AreaHistoryToggle`、既存の`EnabledToggle`/`AttemptCounterToggle`と同じ`ITextToggle`ベース）。ONにすると、通常のエリア情報表示の代わりに、そのプレイで一度以上到達した全エリアを初回訪問順(`order`)に列挙し、各行に挑戦回数を付けて表示する（`AreaTracker.GetHistoryDisplayText`、データは既存の`AreaProgressStore`からそのまま読む）。表示モード切替で行数・幅が大きく変わるため、トグルを押した瞬間に`MenuFactoryPatches.RefreshDisplayFrame()`で枠サイズを再計算している（ポーズの開閉イベントを介さない、メニュー操作中の即時リフレッシュが必要なケース）。
+ポーズ画面のmod設定一覧に「Area History」というON/OFFトグルを追加した（`ITextToggle`ベース）。ONにすると、通常のエリア情報表示の代わりに、そのプレイで一度以上到達した全エリアを初回訪問順(`order`)に列挙し、各行に挑戦回数を付けて表示する。表示モード切替で行数・幅が大きく変わるため、トグルを押した瞬間に`MenuFactoryPatches.RefreshDisplayFrame()`で枠サイズを再計算している（ポーズの開閉イベントを介さない、メニュー操作中の即時リフレッシュが必要なケース）。**この機能は後のセッションで「Progression Detail」に発展・改名された（下記参照）。**
+
+## 実機テストで発覚した不具合2件の修正（このセッション その3）
+
+### 不具合: ゲームを再起動すると挑戦回数・突破済み判定が消える（Save&Exit→Continueでは保持されるのに）
+
+`SaveLube.ProgramStartInitialize()`へのHarmonyパッチ（`AreaProgressStore.Load`を呼ぶ想定だったもの）が、実機では一度も実際の呼び出しを捕まえられていなかったことが逆コンパイルで判明した。`Program.Run()`の起動シーケンスでは、`saveManager.ProgramStartInitialize()`（`SaveLube.ProgramStartInitialize()`を内部で呼ぶ）が`new Game1()`より**前**に1回だけ呼ばれる。一方、modのHarmonyパッチは`JumpGame`のコンストラクタ内（`ModLoader.Instance.CallBeforeLevelLoadMethods()`）で適用されるため、`Game1`より後に存在する`JumpGame`が構築されるまでパッチは効かない。つまり、唯一の本物の呼び出しが完了した**後**にパッチが取り付けられる形になり、`AreaProgressStore.Load()`は実機では永久に呼ばれていなかった。
+
+同一プロセス内の「Save&Exit→Continue」が正しく動いていたのは、メモリ上の`s_levels`がそもそも消えていなかった（リロードする必要が無かった）だけで、ゲーム自体を再起動（プロセス再生成）すると、ロードされない空の状態からやり直しになっていた。
+
+`SaveLubePatches`から効かない`ProgramStartInitialize`パッチを削除し、代わりに`ModEntry.BeforeLevelLoad()`（mod自身が1回だけ、`LevelManager.LoadScreens()`より前に呼ばれる）から直接`AreaProgressStore.Load()`を呼ぶように変更した（`SaveLubePatches.LoadProgress()`）。
+
+### 不具合: 挑戦回数の加算方向が逆（落ちると増え、登っても増えない）→ 一度`start`比較に修正 → ワープを踏まえ`Order`比較に戻した（最終形）
+
+旧ロジック（`AreaProgressStore.OnEnterArea`）は、エリアの初回訪問順`Order`（時系列順）を使い、「前のエリアより`Order`が大きいエリアに入った＝登った」と判定していたが、不具合が報告された。その場でエリアの`start`（画面番号、空間的な位置）を直接比較する方式（`newStart > previousStart`）に修正し、ユーザーに動作確認してもらった。
+
+その後、別の機能（Personal Best）の検討中に、**このゲームにはワープが存在するため、画面番号だけでは「本当にそこまで進んだか」を保証できない**（ワープで本来の進行と無関係に大きい画面番号へ飛ばされる可能性がある）ことが分かった。ユーザーから明示的な確認を得た正しい前提は逆: **`AreaEntry.Order`（各エリアに初めて到達した実際の訪問順）は、ワープが絡んでも基本的に正しい進行順とみなせる。** 画面番号の大小ではなく、実際にプレイヤーが訪れた順序そのものを見ているため。
+
+これを踏まえ、ユーザーの指示により挑戦回数の加算方向判定も`Order`比較に戻した（最終形）: 前のエリアより`Order`が大きい（＝より後で初めて訪れた）エリアに入った時だけ、そのエリアの挑戦回数を加算する（`previousEntry.Order < newEntry.Order`）。一番最初のエリアの例外（`isFirstScreenOfFirstArea`: 一番最初の画面=`screenIndex1 == 最初のエリアのstart`に落ちたら無条件で加算）はそのまま維持。Personal Best（PB）判定も同じ理由で`Order`の最大値でエリアを選ぶ方式にしている（下記参照）。
+
+## 新機能: Personal Best表示・Progression Detail（このセッション その4・5・6）
+
+### Personal Best（PB）
+
+そのプレイでこれまでに到達した中で一番進んだ場所を、エリア名だけでなく**そのエリアの何枚目か**まで含めて表示する機能（例: Colossal Drainの4枚目までしか到達していなければ「Colossal Drain 4」、5枚目には未到達）。
+
+実装は2段階に分かれている:
+- **PBの「エリア」**: `AreaProgressStore.GetPersonalBest`が`Order`（初回訪問順）が最大のエリアを選ぶ。上記の通り、ワープが絡んでも訪問順そのものは信用できるため。
+- **PBの「ページ番号」**: エリアごとに「そのエリア内で到達した実画面番号(`screenIndex1`)の最大値」を保持する（`AreaEntry.BestScreenIndex`、レベル単位ではなく**エリア単位**。XMLには`Area`要素の`bestScreenIndex`属性で永続化）。更新は`AreaTracker.OnUpdate`/`OnLevelStart`が完全マッチ（パターンA）の時だけ、かつ`OnEnterArea`でエリア登録済みであることを確認した後に呼ぶ（`AreaProgressStore.UpdateBestProgress(levelKey, areaStart, screenIndex1)`）。「on the way」（すき間）は完全マッチ時のみ更新するため自然に無視される。
+
+表示時は、PBエリアの`BestScreenIndex`を使ってページ番号を計算する（`AreaTracker.GetPersonalBestText`）。
+
+`PersonalBestToggle`（ON/OFFトグル、メイン・ポーズ両メニューに配置）でON/OFFを切り替えられる。ONの場合、現在のエリア情報（または空文字・"On the way..."）の下にもう1行「PB: エリア名 ページ番号」を追加する（`AreaTracker.AppendPersonalBest`）。
+
+### ラップ機能とProgression Detail
+
+各エリアに**初めて到達した瞬間のプレイ時間**（`AchievementManager.instance.GetCurrentStats().timeSpan`、ゲーム自身のセッション統計と同じ値）を「ラップタイム」として記録する機能。`AchievementManager`は`internal`なため、`PlayTimeAccessor`が`AccessTools`経由でリフレクションする（`instance`フィールド＋`GetCurrentStats()`メソッド。戻り値の`PlayerStats`構造体自体は`public`なのでそのままキャストできる）。記録は`AreaProgressStore.AreaEntry`に`LapTime`（`TimeSpan`、XMLには`Ticks`で永続化）として保存され、そのエリアの初回登録時（`OnEnterArea`の新規エリア分岐）にのみ設定される（再訪問では上書きしない）。
+
+このラップタイムは通常のポーズ画面には表示せず、既存の「Area History」を「Progression Detail」に発展・改名したトグル（`ProgressionDetailToggle`）をONにした時だけ表示される。表示形式は先頭に「pb: エリア名 ページ番号」の行（上記PBと同じ計算）、続けて各エリアを**最後に訪れたものから順に**（最初のエリアが一番下になるように）「エリア名 (#挑戦回数) ラップタイム」で列挙する（`AreaTracker.GetProgressionDetailText`）。エリア単位の行ではPBを個別にマークする必要が無くなったため、以前あった` <- PB`の表示は廃止した。

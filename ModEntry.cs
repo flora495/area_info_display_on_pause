@@ -27,9 +27,11 @@ namespace AreaInfoDisplayOnPause
         {
             var harmony = new Harmony("F.AreaInfoDisplayOnPause.Harmony");
             LocationSettingsAccessor.Initialize();
+            PlayTimeAccessor.Initialize();
             MenuFactoryPatches.Apply(harmony);
             LevelManagerPatches.Apply(harmony);
             SaveLubePatches.Apply(harmony);
+            SaveLubePatches.LoadProgress();
         }
 
         [OnLevelStart]
@@ -65,6 +67,12 @@ namespace AreaInfoDisplayOnPause
             return new AttemptCounterToggle();
         }
 
+        [MainMenuItemSetting]
+        public static PersonalBestToggle MainPersonalBestSetting(object factory, GuiFormat format)
+        {
+            return new PersonalBestToggle();
+        }
+
         [PauseMenuItemSetting]
         public static EnabledToggle PauseEnabledSetting(object factory, GuiFormat format)
         {
@@ -84,9 +92,15 @@ namespace AreaInfoDisplayOnPause
         }
 
         [PauseMenuItemSetting]
-        public static AreaHistoryToggle PauseAreaHistorySetting(object factory, GuiFormat format)
+        public static PersonalBestToggle PausePersonalBestSetting(object factory, GuiFormat format)
         {
-            return new AreaHistoryToggle();
+            return new PersonalBestToggle();
+        }
+
+        [PauseMenuItemSetting]
+        public static ProgressionDetailToggle PauseProgressionDetailSetting(object factory, GuiFormat format)
+        {
+            return new ProgressionDetailToggle();
         }
     }
 }

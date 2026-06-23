@@ -21,7 +21,7 @@ namespace AreaInfoDisplayOnPause
         /// </summary>
         private const string PassageDisplayText = "On the way...";
 
-        private const string NoHistoryDisplayText = "No areas reached yet";
+        private const string NoProgressionDetailText = "No areas reached yet";
 
         private static Location[] s_sortedLocations = new Location[0];
         private static string s_currentLevelKey = string.Empty;
@@ -29,10 +29,10 @@ namespace AreaInfoDisplayOnPause
         private static Location? s_lastExactArea;
 
         /// <summary>
-        /// Toggled by AreaHistoryToggle in the pause menu; swaps GetDisplayText over to the
-        /// visited-areas list instead of the current area's own info.
+        /// Toggled by ProgressionDetailToggle in the pause menu; swaps GetDisplayText over to the
+        /// visited-areas breakdown instead of the current area's own info.
         /// </summary>
-        public static bool ShowHistory { get; set; }
+        public static bool ShowProgressionDetail { get; set; }
 
         public static void OnLevelStart()
         {
@@ -42,7 +42,7 @@ namespace AreaInfoDisplayOnPause
             s_sortedLocations = locations;
             s_lastResolvedStart = null;
             s_lastExactArea = null;
-            ShowHistory = false;
+            ShowProgressionDetail = false;
 
             if (s_sortedLocations.Length == 0)
             {
@@ -57,13 +57,14 @@ namespace AreaInfoDisplayOnPause
             }
 
             Location area = resolved.Area.Value;
-            bool isFirstArea = area.start == s_sortedLocations[0].start;
-            AreaProgressStore.OnEnterArea(s_currentLevelKey, area.start, null, isFirstArea);
+            bool isFirstScreenOfFirstArea = screenIndex1 == s_sortedLocations[0].start;
+            AreaProgressStore.OnEnterArea(s_currentLevelKey, area.start, null, isFirstScreenOfFirstArea, PlayTimeAccessor.GetCurrentPlayTime());
             AreaProgressStore.RestoreClearedOnResume(s_currentLevelKey, s_sortedLocations, screenIndex1);
             s_lastResolvedStart = area.start;
             if (resolved.IsExactMatch)
             {
                 s_lastExactArea = area;
+                AreaProgressStore.UpdateBestProgress(s_currentLevelKey, area.start, screenIndex1);
             }
         }
 
@@ -114,9 +115,15 @@ namespace AreaInfoDisplayOnPause
             int newStart = resolved.Area.Value.start;
             if (s_lastResolvedStart != newStart)
             {
-                bool isFirstArea = newStart == s_sortedLocations[0].start;
-                AreaProgressStore.OnEnterArea(s_currentLevelKey, newStart, s_lastResolvedStart, isFirstArea);
+                bool isFirstScreenOfFirstArea = screenIndex1 == s_sortedLocations[0].start;
+                AreaProgressStore.OnEnterArea(s_currentLevelKey, newStart, s_lastResolvedStart, isFirstScreenOfFirstArea, PlayTimeAccessor.GetCurrentPlayTime());
                 s_lastResolvedStart = newStart;
+            }
+
+            // Runs after OnEnterArea above so the area entry it updates is guaranteed to exist.
+            if (resolved.IsExactMatch)
+            {
+                AreaProgressStore.UpdateBestProgress(s_currentLevelKey, newStart, screenIndex1);
             }
         }
 
@@ -137,13 +144,36 @@ namespace AreaInfoDisplayOnPause
             return null;
         }
 
+        /// <summary>
+        /// area.end - area.unlock + 1, except when the next Location's range starts at or before
+        /// area.end (the two share a boundary screen, e.g. Redcrown Woods end=6 / Colossal Drain
+        /// start=6, unlock=6): once the next Location's own unlock is reached, the exact-match
+        /// resolver hands that shared screen to it instead (see LocationResolver), so area's last
+        /// real screen is one before that, not its own end.
+        /// </summary>
+        private static int GetEffectiveTotal(Location area)
+        {
+            int effectiveEnd = area.end;
+            Location? nextLocation = FindNextLocation(area);
+            if (nextLocation.HasValue && nextLocation.Value.start <= area.end)
+            {
+                effectiveEnd = Math.Min(effectiveEnd, nextLocation.Value.unlock - 1);
+            }
+            return effectiveEnd - area.unlock + 1;
+        }
+
         public static string GetDisplayText()
         {
-            if (ShowHistory)
+            if (ShowProgressionDetail)
             {
-                return GetHistoryDisplayText();
+                return GetProgressionDetailText();
             }
 
+            return AppendPersonalBest(GetCurrentAreaDisplayText());
+        }
+
+        private static string GetCurrentAreaDisplayText()
+        {
             if (s_sortedLocations.Length == 0)
             {
                 return string.Empty;
@@ -185,7 +215,7 @@ namespace AreaInfoDisplayOnPause
             }
 
             string text = showTotal
-                ? $"{name} {current}/{area.end - area.unlock + 1}"
+                ? $"{name} {current}/{GetEffectiveTotal(area)}"
                 : $"{name} {current}/x";
 
             if (ModEntry.Settings.AttemptCounterEnabled)
@@ -203,34 +233,97 @@ namespace AreaInfoDisplayOnPause
         }
 
         /// <summary>
-        /// One line per area that's been reached at least once, in first-visit order, each with
-        /// its attempt count - e.g. "Bargainburg (#2)".
+        /// "AreaName N" for the PB area (the most recently first-discovered one, by Order - see
+        /// AreaProgressStore.GetPersonalBest for why Order rather than raw screen number) and the
+        /// deepest page ever reached within it - e.g. "Colossal Drain 4" if the player got to page
+        /// 4 of it but never reached page 5. Null if nothing's been reached yet.
         /// </summary>
-        private static string GetHistoryDisplayText()
+        private static string GetPersonalBestText()
+        {
+            AreaProgressStore.AreaSummary? pb = AreaProgressStore.GetPersonalBest(s_currentLevelKey);
+            if (!pb.HasValue || pb.Value.BestScreenIndex == 0)
+            {
+                return null;
+            }
+            Location? area = FindLocation(pb.Value.Start);
+            if (!area.HasValue)
+            {
+                return null;
+            }
+            string name = language.ResourceManager.GetString(area.Value.name) ?? area.Value.name;
+            int page = pb.Value.BestScreenIndex - area.Value.unlock + 1;
+            return $"{name} {page}";
+        }
+
+        /// <summary>
+        /// Appends a "PB: <area> <page>" line for the furthest point reached so far, when
+        /// PersonalBestEnabled is on and at least one area has been reached. Shown on top of
+        /// every other display state (current area, "On the way...", empty) since it's meant to
+        /// stay visible regardless of where the player currently is.
+        /// </summary>
+        private static string AppendPersonalBest(string text)
+        {
+            if (!ModEntry.Settings.PersonalBestEnabled)
+            {
+                return text;
+            }
+            string pb = GetPersonalBestText();
+            if (pb == null)
+            {
+                return text;
+            }
+            string pbLine = $"PB: {pb}";
+            return string.IsNullOrEmpty(text) ? pbLine : pbLine + "\n" + text;
+        }
+
+        /// <summary>
+        /// A "pb: ..." summary line followed by one line per area that's been reached at least
+        /// once, each with its attempt count and the play time it was first reached at. Areas are
+        /// listed most-recently-discovered first (the first area at the bottom).
+        /// </summary>
+        private static string GetProgressionDetailText()
         {
             List<AreaProgressStore.AreaSummary> areas = AreaProgressStore.GetVisitedAreas(s_currentLevelKey);
             if (areas.Count == 0)
             {
-                return NoHistoryDisplayText;
+                return NoProgressionDetailText;
             }
 
-            string text = null;
-            foreach (AreaProgressStore.AreaSummary area in areas)
+            string pb = GetPersonalBestText();
+            string text = pb != null ? $"pb: {pb}" : null;
+
+            for (int i = areas.Count - 1; i >= 0; i--)
             {
+                AreaProgressStore.AreaSummary area = areas[i];
                 string name = FindAreaName(area.Start) ?? area.Start.ToString();
-                string line = $"{name} (#{area.AttemptCount})";
+                string line = $"{name} (#{area.AttemptCount}) {FormatLapTime(area.LapTime)}";
                 text = (text == null) ? line : text + "\n" + line;
             }
             return text;
         }
 
+        private static string FormatLapTime(TimeSpan lapTime)
+        {
+            return $"{(int)lapTime.TotalHours}h {lapTime.Minutes}m {lapTime.Seconds}s";
+        }
+
         private static string FindAreaName(int start)
+        {
+            Location? location = FindLocation(start);
+            if (!location.HasValue)
+            {
+                return null;
+            }
+            return language.ResourceManager.GetString(location.Value.name) ?? location.Value.name;
+        }
+
+        private static Location? FindLocation(int start)
         {
             foreach (Location location in s_sortedLocations)
             {
                 if (location.start == start)
                 {
-                    return language.ResourceManager.GetString(location.name) ?? location.name;
+                    return location;
                 }
             }
             return null;

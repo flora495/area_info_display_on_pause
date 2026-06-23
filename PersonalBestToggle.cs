@@ -2,10 +2,10 @@ using JumpKing.PauseMenu.BT.Actions;
 
 namespace AreaInfoDisplayOnPause
 {
-    public sealed class AttemptCounterToggle : ITextToggle
+    public sealed class PersonalBestToggle : ITextToggle
     {
-        public AttemptCounterToggle()
-            : base(ModEntry.Settings.AttemptCounterEnabled)
+        public PersonalBestToggle()
+            : base(ModEntry.Settings.PersonalBestEnabled)
         {
         }
 
@@ -17,13 +17,14 @@ namespace AreaInfoDisplayOnPause
 
         protected override string GetName()
         {
-            return "Attempt Counter";
+            return "Personal Best";
         }
 
         protected override void OnToggle()
         {
-            ModEntry.Settings.AttemptCounterEnabled = base.toggle;
+            ModEntry.Settings.PersonalBestEnabled = base.toggle;
             ModEntry.SaveSettings();
+            MenuFactoryPatches.RefreshDisplayFrame();
         }
     }
 }

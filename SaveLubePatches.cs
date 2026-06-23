@@ -20,15 +20,20 @@ namespace AreaInfoDisplayOnPause
         public static void Apply(Harmony harmony)
         {
             Type saveLubeType = AccessTools.TypeByName("JumpKing.SaveThread.SaveLube");
-            harmony.Patch(AccessTools.Method(saveLubeType, "ProgramStartInitialize"),
-                postfix: new HarmonyMethod(typeof(SaveLubePatches), nameof(ProgramStartInitializePostfix)));
             harmony.Patch(AccessTools.Method(saveLubeType, "SaveCombinedSaveFile"),
                 postfix: new HarmonyMethod(typeof(SaveLubePatches), nameof(SaveCombinedSaveFilePostfix)));
             harmony.Patch(AccessTools.Method(saveLubeType, "DeleteSaves"),
                 postfix: new HarmonyMethod(typeof(SaveLubePatches), nameof(DeleteSavesPostfix)));
         }
 
-        private static void ProgramStartInitializePostfix()
+        /// <summary>
+        /// SaveLube.ProgramStartInitialize() is called once, from Program.Run(), before Game1
+        /// (and so before any mod's Harmony patches) even exists - so a postfix on it can never
+        /// fire for that one real call. Load directly here instead; ModEntry.BeforeLevelLoad
+        /// itself only runs once per process (JumpGame's constructor calls it once), which is
+        /// early enough since it happens before LevelManager.LoadScreens()/OnLevelStart.
+        /// </summary>
+        public static void LoadProgress()
         {
             AreaProgressStore.Load(s_progressPath);
         }
