@@ -17,11 +17,6 @@ namespace AreaInfoDisplayOnPause
         {
         }
 
-        protected override bool CanChange()
-        {
-            return ModEntry.Settings.IsEnabled;
-        }
-
         protected override string GetName()
         {
             return "Progression Detail";

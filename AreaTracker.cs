@@ -25,7 +25,6 @@ namespace AreaInfoDisplayOnPause
 
         private static Location[] s_sortedLocations = new Location[0];
         private static string s_currentLevelKey = string.Empty;
-        private static int? s_lastResolvedStart;
         private static Location? s_lastExactArea;
 
         /// <summary>
@@ -40,7 +39,6 @@ namespace AreaInfoDisplayOnPause
             Location[] locations = LocationSettingsAccessor.GetCurrentLocations();
             Array.Sort(locations, (a, b) => a.start.CompareTo(b.start));
             s_sortedLocations = locations;
-            s_lastResolvedStart = null;
             s_lastExactArea = null;
             ShowProgressionDetail = false;
 
@@ -50,22 +48,24 @@ namespace AreaInfoDisplayOnPause
             }
 
             int screenIndex1 = Camera.CurrentScreenIndex1;
+            AreaProgressStore.RestoreClearedOnResume(s_currentLevelKey, s_sortedLocations, screenIndex1);
+
             LocationResolver.Result resolved = LocationResolver.Resolve(s_sortedLocations, screenIndex1);
-            if (resolved.Area == null)
+            if (!resolved.IsExactMatch)
             {
+                // Started in a gap ("on the way") - nothing genuine to register yet. Registering
+                // off a gap's best-guess fallback Location (see LocationResolver's pattern B) can
+                // pick an area completely unrelated to the path actually taken, on custom levels
+                // where some other Location's start just happens to be the closest one below the
+                // current screen.
                 return;
             }
 
             Location area = resolved.Area.Value;
             bool isFirstScreenOfFirstArea = screenIndex1 == s_sortedLocations[0].start;
             AreaProgressStore.OnEnterArea(s_currentLevelKey, area.start, null, isFirstScreenOfFirstArea, PlayTimeAccessor.GetCurrentPlayTime());
-            AreaProgressStore.RestoreClearedOnResume(s_currentLevelKey, s_sortedLocations, screenIndex1);
-            s_lastResolvedStart = area.start;
-            if (resolved.IsExactMatch)
-            {
-                s_lastExactArea = area;
-                AreaProgressStore.UpdateBestProgress(s_currentLevelKey, area.start, screenIndex1);
-            }
+            AreaProgressStore.UpdateBestProgress(s_currentLevelKey, area.start, screenIndex1);
+            s_lastExactArea = area;
         }
 
         public static void OnUpdate()
@@ -86,10 +86,19 @@ namespace AreaInfoDisplayOnPause
             int screenIndex1 = Camera.CurrentScreenIndex1;
             LocationResolver.Result resolved = LocationResolver.Resolve(s_sortedLocations, screenIndex1);
 
-            if (resolved.IsExactMatch)
+            if (!resolved.IsExactMatch)
             {
-                Location newExactArea = resolved.Area.Value;
-                if (s_lastExactArea.HasValue && newExactArea.start != s_lastExactArea.Value.start)
+                // "On the way" - never registers/clears/tracks anything. A gap's resolved
+                // Location is only a best-guess fallback (closest preceding Location by start
+                // among *all* of them - see LocationResolver), which can be a totally unrelated
+                // area on custom levels, not necessarily the one the player actually just left.
+                return;
+            }
+
+            Location newExactArea = resolved.Area.Value;
+            if (!s_lastExactArea.HasValue || newExactArea.start != s_lastExactArea.Value.start)
+            {
+                if (s_lastExactArea.HasValue)
                 {
                     // Only count the previous area as "cleared" once the player has genuinely
                     // reached the specific area that follows it in sequence - not merely
@@ -103,28 +112,14 @@ namespace AreaInfoDisplayOnPause
                         AreaProgressStore.MarkCleared(s_currentLevelKey, s_lastExactArea.Value.start);
                     }
                 }
-                s_lastExactArea = newExactArea;
-            }
 
-            if (resolved.Area == null)
-            {
-                s_lastResolvedStart = null;
-                return;
-            }
-
-            int newStart = resolved.Area.Value.start;
-            if (s_lastResolvedStart != newStart)
-            {
                 bool isFirstScreenOfFirstArea = screenIndex1 == s_sortedLocations[0].start;
-                AreaProgressStore.OnEnterArea(s_currentLevelKey, newStart, s_lastResolvedStart, isFirstScreenOfFirstArea, PlayTimeAccessor.GetCurrentPlayTime());
-                s_lastResolvedStart = newStart;
+                int? previousStart = s_lastExactArea?.start;
+                AreaProgressStore.OnEnterArea(s_currentLevelKey, newExactArea.start, previousStart, isFirstScreenOfFirstArea, PlayTimeAccessor.GetCurrentPlayTime());
             }
 
-            // Runs after OnEnterArea above so the area entry it updates is guaranteed to exist.
-            if (resolved.IsExactMatch)
-            {
-                AreaProgressStore.UpdateBestProgress(s_currentLevelKey, newStart, screenIndex1);
-            }
+            s_lastExactArea = newExactArea;
+            AreaProgressStore.UpdateBestProgress(s_currentLevelKey, newExactArea.start, screenIndex1);
         }
 
         /// <summary>
@@ -277,9 +272,10 @@ namespace AreaInfoDisplayOnPause
         }
 
         /// <summary>
-        /// A "pb: ..." summary line followed by one line per area that's been reached at least
-        /// once, each with its attempt count and the play time it was first reached at. Areas are
-        /// listed most-recently-discovered first (the first area at the bottom).
+        /// A "pb: ..." summary line, then a "current: ..." line with the same info the normal
+        /// display would show, then one line per area that's been reached at least once, each
+        /// with its attempt count and the play time it was first reached at. Areas are listed
+        /// most-recently-discovered first (the first area at the bottom).
         /// </summary>
         private static string GetProgressionDetailText()
         {
@@ -291,6 +287,13 @@ namespace AreaInfoDisplayOnPause
 
             string pb = GetPersonalBestText();
             string text = pb != null ? $"pb: {pb}" : null;
+
+            string current = GetCurrentAreaDisplayText();
+            if (!string.IsNullOrEmpty(current))
+            {
+                string currentLine = $"current: {current}";
+                text = (text == null) ? currentLine : text + "\n" + currentLine;
+            }
 
             for (int i = areas.Count - 1; i >= 0; i--)
             {

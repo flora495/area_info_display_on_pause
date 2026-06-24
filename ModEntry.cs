@@ -37,22 +37,12 @@ namespace AreaInfoDisplayOnPause
         [OnLevelStart]
         public static void OnLevelStart()
         {
-            if (!Settings.IsEnabled)
-            {
-                return;
-            }
             AreaTracker.OnLevelStart();
         }
 
         public static void SaveSettings()
         {
             Settings.Save(SettingsPath);
-        }
-
-        [MainMenuItemSetting]
-        public static EnabledToggle MainEnabledSetting(object factory, GuiFormat format)
-        {
-            return new EnabledToggle();
         }
 
         [MainMenuItemSetting]
@@ -71,12 +61,6 @@ namespace AreaInfoDisplayOnPause
         public static PersonalBestToggle MainPersonalBestSetting(object factory, GuiFormat format)
         {
             return new PersonalBestToggle();
-        }
-
-        [PauseMenuItemSetting]
-        public static EnabledToggle PauseEnabledSetting(object factory, GuiFormat format)
-        {
-            return new EnabledToggle();
         }
 
         [PauseMenuItemSetting]

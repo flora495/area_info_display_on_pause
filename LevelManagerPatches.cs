@@ -18,10 +18,6 @@ namespace AreaInfoDisplayOnPause
 
         private static void UpdatePostfix()
         {
-            if (!ModEntry.Settings.IsEnabled)
-            {
-                return;
-            }
             AreaTracker.OnUpdate();
         }
     }

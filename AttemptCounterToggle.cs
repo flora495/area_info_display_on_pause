@@ -12,7 +12,7 @@ namespace AreaInfoDisplayOnPause
         protected override bool CanChange()
         {
             // Has no effect while Progression Detail is showing its own attempt count/PB line.
-            return ModEntry.Settings.IsEnabled && !AreaTracker.ShowProgressionDetail;
+            return !AreaTracker.ShowProgressionDetail;
         }
 
         protected override string GetName()

@@ -64,7 +64,6 @@
 	<ItemGroup>
 		<Compile Include="ModEntry.cs" />
 		<Compile Include="Settings.cs" />
-		<Compile Include="EnabledToggle.cs" />
 		<Compile Include="AttemptCounterToggle.cs" />
 		<Compile Include="PersonalBestToggle.cs" />
 		<Compile Include="ProgressionDetailToggle.cs" />

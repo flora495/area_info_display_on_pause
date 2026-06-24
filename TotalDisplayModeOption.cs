@@ -11,7 +11,7 @@ namespace AreaInfoDisplayOnPause
 
         protected override bool CanChange()
         {
-            return ModEntry.Settings.IsEnabled;
+            return true;
         }
 
         protected override string CurrentOptionName()

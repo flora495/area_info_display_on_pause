@@ -198,9 +198,14 @@ namespace AreaInfoDisplayOnPause
         }
 
         /// <summary>
-        /// Catches up areas that were already passed before this mod's tracking started for
-        /// this level (e.g. the mod was just installed mid-playthrough, or this is a resumed
-        /// save and the level-start quiet resolve only registers the current area).
+        /// Catches up an area's cleared flag if it already has an entry (so this mod was already
+        /// tracking it earlier this playthrough) but HasFullyCleared is still false despite the
+        /// resume screen being past its end - e.g. it was registered but MarkCleared never fired
+        /// for it (a warp skipped past the literal "next area" exact-match it relies on).
+        ///
+        /// This does *not* retroactively create entries for areas that have no entry at all (e.g.
+        /// ones passed before this mod was ever installed) - those are simply left unrecorded
+        /// until the player visits them again with the mod active.
         /// </summary>
         public static void RestoreClearedOnResume(string levelKey, Location[] sortedLocations, int screenIndex1)
         {

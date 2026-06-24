@@ -13,7 +13,6 @@ namespace AreaInfoDisplayOnPause
 
     public sealed class Settings
     {
-        public bool IsEnabled { get; set; } = true;
         public TotalDisplayMode DisplayMode { get; set; } = TotalDisplayMode.AfterClear;
         public bool AttemptCounterEnabled { get; set; } = true;
         public bool PersonalBestEnabled { get; set; } = true;
@@ -27,7 +26,6 @@ namespace AreaInfoDisplayOnPause
             XElement root = XDocument.Load(path).Root;
             return new Settings
             {
-                IsEnabled = (bool?)root.Element("IsEnabled") ?? true,
                 DisplayMode = ParseDisplayMode((string)root.Element("DisplayMode")),
                 AttemptCounterEnabled = (bool?)root.Element("AttemptCounterEnabled") ?? true,
                 PersonalBestEnabled = (bool?)root.Element("PersonalBestEnabled") ?? true,
@@ -37,7 +35,6 @@ namespace AreaInfoDisplayOnPause
         public void Save(string path)
         {
             new XDocument(new XElement("Settings",
-                new XElement("IsEnabled", IsEnabled),
                 new XElement("DisplayMode", DisplayMode),
                 new XElement("AttemptCounterEnabled", AttemptCounterEnabled),
                 new XElement("PersonalBestEnabled", PersonalBestEnabled))).Save(path);

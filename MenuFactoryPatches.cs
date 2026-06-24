@@ -67,11 +67,6 @@ namespace AreaInfoDisplayOnPause
         /// </summary>
         private static bool CreatePauseInfoPrefix(object __instance, ref DisplayFrame __result)
         {
-            if (!ModEntry.Settings.IsEnabled)
-            {
-                return true;
-            }
-
             GuiFormat format = (GuiFormat)s_guiFormatField.GetValue(null);
             format.all_margin /= 2;
             // Match the original CreatePauseInfo's own padding (halved, +1) instead of the full

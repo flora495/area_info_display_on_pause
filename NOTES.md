@@ -608,3 +608,29 @@ order(area) = そのプレイ（セーブ）中で、そのエリアに初めて
 各エリアに**初めて到達した瞬間のプレイ時間**（`AchievementManager.instance.GetCurrentStats().timeSpan`、ゲーム自身のセッション統計と同じ値）を「ラップタイム」として記録する機能。`AchievementManager`は`internal`なため、`PlayTimeAccessor`が`AccessTools`経由でリフレクションする（`instance`フィールド＋`GetCurrentStats()`メソッド。戻り値の`PlayerStats`構造体自体は`public`なのでそのままキャストできる）。記録は`AreaProgressStore.AreaEntry`に`LapTime`（`TimeSpan`、XMLには`Ticks`で永続化）として保存され、そのエリアの初回登録時（`OnEnterArea`の新規エリア分岐）にのみ設定される（再訪問では上書きしない）。
 
 このラップタイムは通常のポーズ画面には表示せず、既存の「Area History」を「Progression Detail」に発展・改名したトグル（`ProgressionDetailToggle`）をONにした時だけ表示される。表示形式は先頭に「pb: エリア名 ページ番号」の行（上記PBと同じ計算）、続けて各エリアを**最後に訪れたものから順に**（最初のエリアが一番下になるように）「エリア名 (#挑戦回数) ラップタイム」で列挙する（`AreaTracker.GetProgressionDetailText`）。エリア単位の行ではPBを個別にマークする必要が無くなったため、以前あった` <- PB`の表示は廃止した。
+
+## 不具合: 一度も入っていないはずのエリアがProgression Detailに出現する（カスタムレベル `3315431380` で発覚）
+
+実機テストで報告: 画面番号が`1->2->142`と進み、142は通常表示で`On the way...`（パターンB・すき間）だったにもかかわらず、Progression Detailには無関係な`The Tower of Frozen Genesis`というエリアが表示された。
+
+原因は`LocationResolver.Resolve`のパターンBフォールバックの仕様にあった。パターンBは「`p_screenIndex1`以下の`start`を持つ`Location`の中で`start`が最大のもの」を選ぶが、これは**配列内の全`Location`が対象**であり、プレイヤーが実際に通った経路上のエリアである保証は無い。バニラのように全エリアが連続的に並んでいるデータでは「直前に完全マッチしていたエリア」が自然に選ばれるが、カスタムレベルでは、現在地と無関係な（経路上に存在しない）エリアの`start`がたまたま「142以下で最大」になっているだけで選ばれてしまうことがある。
+
+`AreaTracker.OnUpdate`/`OnLevelStart`は、`resolved.Area`（パターンA・B問わず）が変わるたびに`AreaProgressStore.OnEnterArea`（初回訪問登録・挑戦回数）を呼んでいたため、このパターンBの「無関係な best-guess」エリアまで誤って「訪問した」として記録してしまい、それがProgression Detailの一覧に混入していた。通常表示側は`!resolved.IsExactMatch`を見て`On the way...`に差し替えていたため症状が出ていなかったが、裏の記録処理は完全マッチかどうかを見ていなかった。
+
+**修正**: `OnEnterArea`・`UpdateBestProgress`・クリア済み判定を、`resolved.IsExactMatch`が`true`の場合だけ呼ぶように統一した（パターンBの間は記録処理を一切行わない）。これに伴い、それまで「直前に解決されたエリア（パターンA・B問わず）」を覚えていた`s_lastResolvedStart`は不要になり削除し、`s_lastExactArea`（完全マッチのみを覚える）一本に統一した。
+
+**既知の制限**: この修正は今後の誤登録を防ぐだけで、修正前に既に誤って記録されてしまった`AreaProgressStore`のXMLエントリ（例: 上記`The Tower of Frozen Genesis`）は自動的には削除されない。該当レベルで一度「Restart」する（進捗データがクリアされる）か、`F.AreaInfoDisplayOnPause.AreaProgress.xml`から該当エントリを手動で削除する必要がある。
+
+## Enabledトグルの廃止（mod全体は常に有効）
+
+ポーズ中に**Enabled**をOFF→ONと切り替えると、表示・追跡が「変な感じ」になる不具合が報告された。原因は、OFFの間`LevelManagerPatches.UpdatePostfix`が`AreaTracker.OnUpdate()`自体を呼ばなくしていたため、プレイヤーが進んでいる間も挑戦回数・突破済み・PB・ラップタイムの追跡が完全に止まっていたこと。その後ONに戻すと、`s_lastExactArea`等の内部状態が「OFFになった時点」のまま止まっており、実際の現在地との間に「OFFだった間に通過した分」のギャップが生じ、次のエリア遷移検出が不整合な値を見ることになっていた（例: 本来の挑戦回数の加算/見送り判定が誤る、クリア済み判定が正しい「直後のエリア」を見られない等）。
+
+一度「常時ライブ判定で即時反映できるようにする」という改修（`AreaTracker.GetDisplayText`が`Settings.IsEnabled`をその場で見て本家Objectiveテキストにフォールバックする、`ModEntry.OnLevelStart`を常時実行する等）を試したが、結局「追跡処理そのもの」を一時停止できる以上、この不整合は構造的に避けられないと判断し、**Enabledトグル自体を完全に廃止**することにした（ユーザー判断）。これにより:
+
+- mod全体は常に有効。無効化する手段は無い
+- `EnabledToggle.cs`を削除し、`Settings.IsEnabled`・`[MainMenuItemSetting] MainEnabledSetting`・`[PauseMenuItemSetting] PauseEnabledSetting`を全て削除
+- `LevelManagerPatches.UpdatePostfix`は常に`AreaTracker.OnUpdate()`を呼ぶ
+- `MenuFactoryPatches.CreatePauseInfoPrefix`は常にこのmod独自の表示枠を設置する（本家Objectiveへのフォールバック分岐は不要になった）
+- 各トグル（`AttemptCounterToggle`/`PersonalBestToggle`/`TotalDisplayModeOption`）の`CanChange()`から`Settings.IsEnabled`チェックを削除（`ProgressionDetailToggle`は他に条件が無くなったため`CanChange`のオーバーライド自体を削除し、基底の既定値`true`に委ねている）
+
+このため、上記「追加要望3」「確定したデフォルト値」節などに残る「Enabled」に関する記述は、当時の設計判断の記録としてそのまま残すが、現在の実装はこの節の内容で上書きされている。
