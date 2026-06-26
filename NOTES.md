@@ -634,3 +634,69 @@ order(area) = そのプレイ（セーブ）中で、そのエリアに初めて
 - 各トグル（`AttemptCounterToggle`/`PersonalBestToggle`/`TotalDisplayModeOption`）の`CanChange()`から`Settings.IsEnabled`チェックを削除（`ProgressionDetailToggle`は他に条件が無くなったため`CanChange`のオーバーライド自体を削除し、基底の既定値`true`に委ねている）
 
 このため、上記「追加要望3」「確定したデフォルト値」節などに残る「Enabled」に関する記述は、当時の設計判断の記録としてそのまま残すが、現在の実装はこの節の内容で上書きされている。
+
+## 既知の仕様: ワープで2つ以上先のエリアに飛ぶと、ワープ元のエリアが「突破済み」にならない
+
+実機確認: `Redcrown Woods`の2枚目からワープで`Philosopher's Forest`（定義順でかなり後ろのエリア）に直接入った場合、`Redcrown Woods`は「突破済み」にならない。
+
+原因は「脇道に入って戻ってきただけでは誤って突破済みにならない」ための既存の判定ロジックそのもの（`AreaTracker.OnUpdate`、`FindNextLocation`で「直前のエリアの、定義順で本当に1つ後ろのLocation」を求め、新しく入ったエリアの`start`がそれと一致した時だけ`MarkCleared`を呼ぶ）。ワープ先が定義順で直後のエリア（例: `Redcrown Woods`→`Colossal Drain`）ならこの判定は正しく成立して突破済みになるが、2つ以上先のエリアへワープした場合は「直後のLocation」と一致しないため成立しない。
+
+ここで言う「定義順」「隣接」「2つ以上先」は、すべて`s_sortedLocations`の並び＝**画面番号(`start`)の昇順**を指す（`AreaTracker.OnLevelStart`の`Array.Sort(locations, (a, b) => a.start.CompareTo(b.start))`）。`AreaEntry.Order`（初回訪問順）とは無関係で、`FindNextLocation`はOrderを一切参照しない。
+
+**これは意図した・許容するトレードオフであり、修正不要**（ユーザー確認済み）。脇道の誤判定を防ぐための仕組みを、ワープにも例外なく適用しているだけであり、個別に特別扱いするとその分だけ「本当に脇道なのか、ワープで複数エリア飛ばしたのか」を区別する必要が生じ複雑化する。`TEST_CASES.md`の「11. 既知の限界の確認」に明記。
+
+## 新機能: Babe（エンディング）画面の特別表示
+
+3つの「Babe」エンディング画面（バニラ: `Content/settings/babe.xml`相当の42/99/153画面、カスタムレベル: `level_settings.xml`の`ending_screen`/`ending_screen_second`/`ending_screen_third`）にちょうどいる間だけ、通常のエリア表示を上書きして`Babe`と表示する機能を追加した。3つの画面は区別しない（どれも同じ`Babe`という表示になる）。
+
+**画面番号の取得元**: 自前でXMLを読まず、ゲーム自身が内部的に解決済みの値を使う。`JumpKing.GameManager.MultiEnding.EndingManager`（`internal`クラス。`public static instance`プロパティ、`public int[] GetWinScreens0()`メソッド）が、`NormalEnding`/`NewBabePlusEnding`/`OwlEnding`の3つの`ENDING_SCREEN0`（バニラはハードコード、カスタムレベルは`level_settings.xml`を読んで`-1`した0始まりの値、`Camera.CurrentScreen`と同じ数値体系）を配列で返す。これに`+1`すれば、このmodの`screenIndex1`（`Camera.CurrentScreenIndex1`、`Location.start`等と同じ1始まりの体系）に揃う。`PlayTimeAccessor`と同じ要領で`AccessTools`経由のリフレクションで読む（`EndingScreensAccessor.cs`）。`EndingManager.instance`は`GameLoop.OnPreGameStart`で毎レベル(再)生成されるため、`AreaTracker.OnLevelStart`で毎回取得し直す。
+
+**仕様（ユーザー判断・確認済み）**:
+- **表示だけの上書き、`AreaProgressStore`には一切影響しない**: Babe画面はLocation一覧（本筋・脇道）の範囲内に重なって存在する（例: 本筋エリアの途中の1画面）ことが多いが、独立したエリアとして登録する設計にはしなかった。`Order`・挑戦回数・突破済み・`BestScreenIndex`は、その画面が属する本来のエリアとして裏側では変わらず追跡され続ける。`GetCurrentAreaDisplayText`が返すテキストだけを、その画面にいる間だけ`Babe`に差し替える（`AreaTracker.GetBabeDisplayText`）
+- **Babeを最優先で上書き**: 通常のLocation解決（パターンA/B）より先に判定するため、Babe画面がどのLocationの範囲内にあっても関係なく`Babe`が出る。1画面分だけの上書きなので、その画面を離れた瞬間（Babeのあとに先に進む、あるいは下に落ちる）通常表示に戻る
+- **PB行・Progression Detailの`pb:`行も同様に上書きするが、こちらは「現在その画面にいる間だけ」ではなく永続的（実機テストで修正）**: 最初は現在地表示と同じく「今その画面にいる間だけ」`PB: Babe`を出す実装にしたが、実機で「Babeに到達した後、そこから落ちるとPBが本来のエリア（例: `The Tower 4`）に戻ってしまう」という指摘を受けた。Babeのエンディング画面に到達することはそのプレイで最も深い到達点であるはずなので、一度到達したら**そのプレイ中はずっとPBが`Babe`のまま**になるのが正しい仕様だと判断した。
+  - `LevelEntry`に`HasReachedBabe`（`bool`）を追加し、XMLの`<Level reachedBabe="...">`属性として永続化（`Order`等と同じレベル単位のデータ）。一度`true`になったら、そのレベルの進捗データがクリアされない限り（`Restart`等）`false`に戻らない
+  - `AreaProgressStore.MarkBabeReached(levelKey)`/`HasReachedBabe(levelKey)`を追加。`AreaTracker.OnUpdate`・`OnLevelStart`の両方で、画面がBabeに一致した時点で`MarkBabeReached`を呼ぶ（`OnLevelStart`側はセーブがBabe画面の上でちょうど再開された場合のカバー用）
+  - `AppendPersonalBest`・`GetProgressionDetailText`の`pb:`行は、`HasReachedBabe(levelKey)`が`true`なら無条件で`"Babe"`を返す（`GetPersonalBestText()`を呼ばない）。現在地表示（`GetCurrentAreaDisplayText`）の方は元のまま「今その画面にいる間だけ」で変更無し（現在地は常に実際の現在位置を正しく反映すべきなので、両者は意図的に非対称）
+- **Babeに到達したら、その画面が属する本来のエリアも「突破済み」扱いにする（追加要望）**: 例えば`main babe`で`The Tower`エリア4枚目にBabeがいる場合、Babe到達と同時に`The Tower`自体も突破済みになる。`AreaTracker.OnUpdate`/`OnLevelStart`で、Babe画面に一致した時点の`resolved.Area`（exact matchの場合のみ）に対して`AreaProgressStore.MarkCleared`を呼ぶ。
+  - 呼ぶタイミングに注意が必要だった: その時点でそのエリアがまだ一度も登録されていない場合（`AreaProgressStore.MarkCleared`は未登録のエリアに対しては何もしない一方通行のno-op）、先に`OnEnterArea`によるエリア登録が完了してから呼ばないと取りこぼす。`OnUpdate`では関数の最後（`UpdateBestProgress`の後）、`OnLevelStart`では`OnEnterArea`呼び出しの直後に、それぞれ`MarkCleared`を移動して対処した
+
+## Mods設定画面の枠サイズ不具合の根本修正（パディング方式から廃止）
+
+`Show Total`オプション（`TotalDisplayModeOption`）の表示テキストが`Always`/`Never`/`After Clear`で長さが違うため、Mods設定画面（メイン・ポーズ両メニュー）をある値で開いた状態のまま、その場で別の値に切り替えると、枠のサイズが追従せずテキストがはみ出す不具合があった。
+
+最初はテキストを固定長にパディングする方式で対処したが、どこにパディングを入れても「ラベルと値の間」または「値と`>`の間」のどちらかに不自然な隙間が残ってしまい、ユーザーから2度にわたって指摘された。
+
+逆コンパイルで調査した結果、根本原因が判明した。`JumpKing.PauseMenu.MenuFactory.CreateModOptions`（`private`メソッド）が、modごとの設定項目をまとめた`MenuSelector`を生成する際、`MenuSelector.Initialize()`（`m_format.CalculateBounds(m_menu_items)`で全項目の現在のテキストを測り、枠サイズを計算する`public`メソッド）を**ポップアップに入った時に1回だけ**呼んでいる。ポップアップを開いたままオプションの値をその場で変えても、`Initialize()`は再実行されないため、枠サイズが古いテキストの長さのまま固定されてしまう。
+
+**修正**: パディングをすべて削除し、根本原因に対処した。
+- `MenuFactoryPatches.cs`に`CreateModOptions`へのHarmonyポストフィックスを追加。引数の`ModAssembly[] assemblies`を見て、このmod自身（`typeof(ModEntry).Assembly`と一致するもの）の設定項目を含む呼び出しだけを判別し、その時の戻り値（`MenuSelector`）を`s_modSettingsMenu`に保持する
+- 新しい`public static void RefreshModSettingsMenu()`が`s_modSettingsMenu?.Initialize()`を呼ぶ。これを`TotalDisplayModeOption.OnOptionChange`から呼ぶことで、値が変わった瞬間に枠サイズが正しく再計算される
+- これは既存の`RefreshDisplayFrame`（ポーズ画面下部の自前の表示枠用）と全く同じ発想の修正で、対象が「自前のDisplayFrame」ではなく「ゲーム本体のMods設定ポップアップのMenuSelector」という違いだけ
+- `AttemptCounterToggle`/`PersonalBestToggle`/`ProgressionDetailToggle`は項目名のテキスト自体が変わらない（チェックボックスの記号だけが変わる）ため、この対応は不要
+
+### 追加修正: `After Clear`選択時、わずかにテキストが枠からはみ出す
+
+上記の根本修正後も、`After Clear`（3つの選択肢の中で最長）が選択された状態で開いた・切り替えた直後、ごくわずかに右端の`>`がはみ出す現象が残った。`IOptions`を逆コンパイルして原因を特定した。
+
+- 枠サイズの計算（`GuiFormat.CalculateBounds`）は各項目の`IMenuItem.GetSize()`を使う。`IOptions.GetSize()`は`MenuItemHelper.GetSize(text)`（内部は`SpriteFont.MeasureString(text).ToPoint()`）に矢印分の幅(`GetExtraWidth()`)を加算したもの
+- `Vector2.ToPoint()`（MonoGame）はX/Yを**0方向への切り捨て**で`int`化するため、`MeasureString`が返す浮動小数点の幅よりも`GetSize()`の戻り値が最大1px弱小さくなりうる。これが、本来ぴったり収まるはずの最長テキストでもわずかに不足する原因
+- 一方、実際の描画位置を決める`IOptions.MyDraw`は`GetSize()`を一切使わず、`m_font.MeasureString(text)`を**その場で独自に再計算**して矢印・テキストの位置を決めている
+
+つまり「枠の计算に使う数値」と「実際に描画される位置」は完全に別経路であり、**`GetSize()`だけを大きめに返すよう上書きしても、見た目の文字・矢印の配置（隙間の有無）には一切影響しない**。これを利用し、`TotalDisplayModeOption`で`GetSize()`をオーバーライドし、`base.GetSize()`の戻り値に固定で`+6px`した値を返すようにした。テキストへのパディング（文字を増やす）とは違い、見た目の隙間を一切生まずに枠だけ少し大きく確保できる。
+
+### 追加修正: `RefreshModSettingsMenu`が効いていなかった（メイン・ポーズ両方が同じ変数を共有していた）
+
+上記の根本修正・追加修正を入れても、実機では「`After Clear`で開いた状態ならぴったり収まるが、`Always`等で開いてから`After Clear`に切り替えると、依然はみ出る」という報告を受けた。つまり`RefreshModSettingsMenu`が呼ばれていない（または効いていない）ケースが残っていた。
+
+原因: メイン・ポーズ両方の「Mods」設定ポップアップは、実際にその画面へナビゲートする**前**に、メニュー全体の構築時にあらかじめ`CreateModOptions`が呼ばれて`MenuSelector`が作られている（遅延生成ではない）。このmod自身の設定は両方のメニューに登録しているため、`CreateModOptions`はこのmod用に**2回**呼ばれる（メイン用・ポーズ用）。`CreateModOptionsPostfix`が1つの`s_modSettingsMenu`変数だけに保持していたため、後から呼ばれた方（実際に画面に出ているのとは別の方）で上書きされてしまい、`RefreshModSettingsMenu`は見えていない方の`MenuSelector`だけを再計算する、という状態になっていた。
+
+**修正（試行）**: `CreateModOptions`の`is_pause_menu`引数も受け取り、メイン用・ポーズ用を別々の変数（`s_mainMenuSettingsMenu`/`s_pauseMenuSettingsMenu`）に保持。`RefreshModSettingsMenu`は両方の`Initialize()`を呼ぶ（開いていない方を再計算しても描画されていないので無害）、という想定だった。
+
+**この修正は取り消した**: 実機でポーズ画面側の設定ポップアップの表示自体が壊れる（枠・項目がおかしくなる）という、別の不具合が新たに発生したため、ユーザー指示によりこの変更だけを取り消し、`s_modSettingsMenu`を1つの変数に戻した（つまり「`Always`等で開いてから`After Clear`に切り替えるとはみ出る」問題自体は未解決のまま残っている）。原因の特定・再修正は今後の課題。
+
+### 全面的に取り消し: `CreateModOptions`へのHarmonyパッチ自体を撤去
+
+1つ前の修正を取り消した後も、ポーズ画面側の設定ポップアップの表示崩れが直らないという報告を受けた。つまり問題は「メイン/ポーズの変数を分けたこと」ではなく、もっと根本的に**`MenuFactory.CreateModOptions`へのHarmonyパッチそのもの**（全modの設定ポップアップ生成で共有されている`private`メソッドへの直接パッチ）が原因だった可能性が高いと判断し、ユーザー指示によりこの一連の「根本修正」全体（`CreateModOptionsPostfix`・`RefreshModSettingsMenu`・`s_modSettingsMenu`フィールド、および`TotalDisplayModeOption`側の`GetSize()`オーバーライド・`OnOptionChange`からの`RefreshModSettingsMenu`呼び出し）を完全に削除し、`TotalDisplayModeOption`を**`CreateModOptions`パッチ導入前の状態（`PadLeft`によるパディング方式）**まで戻した。
+
+**現状**: 「設定値を`Always`等で開いた状態のまま、その場で`After Clear`に切り替えるとテキストがわずかにはみ出る」問題自体は再び未解決に戻っている。今後この問題に再度取り組む場合は、`MenuFactory`内部の共有メソッド（`CreateModOptions`等）への直接パッチは、他modの設定画面にも影響しうる高リスクな手段だったと分かったので、別のアプローチ（例: パディング量の微調整のみで妥協する等）を検討すること。

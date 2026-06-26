@@ -28,6 +28,26 @@ namespace AreaInfoDisplayOnPause
         private static Location? s_lastExactArea;
 
         /// <summary>
+        /// The level's 3 "Babe" ending screens (see EndingScreensAccessor), in Normal/New Babe
+        /// Plus/Owl order. Purely a display-time override (GetBabeDisplayText) - standing exactly
+        /// on one of these screens shows "Babe N" instead of the normal area/PB text, but doesn't
+        /// touch AreaProgressStore at all, so the real Location underneath keeps tracking normally
+        /// and the override disappears the moment the player moves off that one screen.
+        /// </summary>
+        private static int[] s_babeScreens = new int[0];
+
+        /// <summary>
+        /// Set whenever the player isn't exact-matched to s_lastExactArea (a "gap", or briefly a
+        /// different area) since it was last set. Lets OnUpdate recognise "left, then came back to
+        /// the very same area" as a fresh attempt too, not just "climbed into a different, later
+        /// area" - see the returnedAfterLeaving check below.
+        /// </summary>
+        private static bool s_awayFromLastArea;
+
+        /// <summary>Whether the player was on the level's literal first screen last frame; see isOnFirstScreen below.</summary>
+        private static bool s_wasOnFirstScreen;
+
+        /// <summary>
         /// Toggled by ProgressionDetailToggle in the pause menu; swaps GetDisplayText over to the
         /// visited-areas breakdown instead of the current area's own info.
         /// </summary>
@@ -39,7 +59,9 @@ namespace AreaInfoDisplayOnPause
             Location[] locations = LocationSettingsAccessor.GetCurrentLocations();
             Array.Sort(locations, (a, b) => a.start.CompareTo(b.start));
             s_sortedLocations = locations;
+            s_babeScreens = EndingScreensAccessor.GetBabeScreens();
             s_lastExactArea = null;
+            s_awayFromLastArea = false;
             ShowProgressionDetail = false;
 
             if (s_sortedLocations.Length == 0)
@@ -48,9 +70,23 @@ namespace AreaInfoDisplayOnPause
             }
 
             int screenIndex1 = Camera.CurrentScreenIndex1;
+            // Initialised from the resume screen (not unconditionally false) so a save that just
+            // happens to resume sitting on the literal first screen doesn't look like a fresh
+            // "landed here" transition to OnUpdate's isOnFirstScreen check on its very next frame.
+            s_wasOnFirstScreen = screenIndex1 == s_sortedLocations[0].start;
             AreaProgressStore.RestoreClearedOnResume(s_currentLevelKey, s_sortedLocations, screenIndex1);
 
             LocationResolver.Result resolved = LocationResolver.Resolve(s_sortedLocations, screenIndex1);
+
+            // Covers resuming a save sitting exactly on a Babe screen - OnUpdate's own check
+            // wouldn't see this until the next frame's transition, if ever (it only fires on
+            // landing, and the player may already have been standing there before the reload).
+            bool isOnBabeScreen = GetBabeDisplayText(screenIndex1) != null;
+            if (isOnBabeScreen)
+            {
+                AreaProgressStore.MarkBabeReached(s_currentLevelKey);
+            }
+
             if (!resolved.IsExactMatch)
             {
                 // Started in a gap ("on the way") - nothing genuine to register yet. Registering
@@ -62,9 +98,14 @@ namespace AreaInfoDisplayOnPause
             }
 
             Location area = resolved.Area.Value;
-            bool isFirstScreenOfFirstArea = screenIndex1 == s_sortedLocations[0].start;
-            AreaProgressStore.OnEnterArea(s_currentLevelKey, area.start, null, isFirstScreenOfFirstArea, PlayTimeAccessor.GetCurrentPlayTime());
+            AreaProgressStore.OnEnterArea(s_currentLevelKey, area.start, null, false, PlayTimeAccessor.GetCurrentPlayTime());
             AreaProgressStore.UpdateBestProgress(s_currentLevelKey, area.start, screenIndex1);
+            if (isOnBabeScreen)
+            {
+                // Only after OnEnterArea above, so area is guaranteed to already be registered -
+                // MarkCleared is a no-op against an area with no entry yet.
+                AreaProgressStore.MarkCleared(s_currentLevelKey, area.start);
+            }
             s_lastExactArea = area;
         }
 
@@ -86,17 +127,45 @@ namespace AreaInfoDisplayOnPause
             int screenIndex1 = Camera.CurrentScreenIndex1;
             LocationResolver.Result resolved = LocationResolver.Resolve(s_sortedLocations, screenIndex1);
 
+            bool isOnBabeScreen = GetBabeDisplayText(screenIndex1) != null;
+            if (isOnBabeScreen)
+            {
+                AreaProgressStore.MarkBabeReached(s_currentLevelKey);
+            }
+
+            // The very first area has no area below it to register a "left, then came back"
+            // transition through in the usual sense - the only thing below it is the literal
+            // bottom of the level (its own start screen, which for areas where start < unlock is
+            // itself a gap, never exact-matched as the area itself - see LocationResolver). So this
+            // is tracked independently of exact-match resolution, as its own one-shot transition.
+            bool isOnFirstScreen = screenIndex1 == s_sortedLocations[0].start;
+            if (isOnFirstScreen && !s_wasOnFirstScreen)
+            {
+                AreaProgressStore.BumpAttempt(s_currentLevelKey, s_sortedLocations[0].start, PlayTimeAccessor.GetCurrentPlayTime());
+            }
+            s_wasOnFirstScreen = isOnFirstScreen;
+
             if (!resolved.IsExactMatch)
             {
                 // "On the way" - never registers/clears/tracks anything. A gap's resolved
                 // Location is only a best-guess fallback (closest preceding Location by start
                 // among *all* of them - see LocationResolver), which can be a totally unrelated
                 // area on custom levels, not necessarily the one the player actually just left.
+                // Still marks that the player has left whatever area they were last confirmed in,
+                // so returning to that *same* area later is recognised as a fresh attempt too.
+                s_awayFromLastArea = true;
                 return;
             }
 
             Location newExactArea = resolved.Area.Value;
-            if (!s_lastExactArea.HasValue || newExactArea.start != s_lastExactArea.Value.start)
+            bool isFirstArea = newExactArea.start == s_sortedLocations[0].start;
+            bool areaChanged = !s_lastExactArea.HasValue || newExactArea.start != s_lastExactArea.Value.start;
+            // Returning to the very same area after being away (a gap, or a side trip) is just as
+            // much a fresh attempt as climbing into a different, later area - except for the first
+            // area, which uses its own isOnFirstScreen-based rule above instead.
+            bool returnedAfterLeaving = !areaChanged && s_awayFromLastArea && !isFirstArea;
+
+            if (areaChanged || returnedAfterLeaving)
             {
                 if (s_lastExactArea.HasValue)
                 {
@@ -113,13 +182,23 @@ namespace AreaInfoDisplayOnPause
                     }
                 }
 
-                bool isFirstScreenOfFirstArea = screenIndex1 == s_sortedLocations[0].start;
                 int? previousStart = s_lastExactArea?.start;
-                AreaProgressStore.OnEnterArea(s_currentLevelKey, newExactArea.start, previousStart, isFirstScreenOfFirstArea, PlayTimeAccessor.GetCurrentPlayTime());
+                AreaProgressStore.OnEnterArea(s_currentLevelKey, newExactArea.start, previousStart, returnedAfterLeaving, PlayTimeAccessor.GetCurrentPlayTime());
             }
 
             s_lastExactArea = newExactArea;
+            s_awayFromLastArea = false;
             AreaProgressStore.UpdateBestProgress(s_currentLevelKey, newExactArea.start, screenIndex1);
+
+            if (isOnBabeScreen)
+            {
+                // Only after OnEnterArea above (inside the areaChanged/returnedAfterLeaving branch,
+                // or from an earlier visit), so newExactArea is guaranteed to already be registered
+                // - MarkCleared is a no-op against an area with no entry yet. Reaching a Babe ending
+                // screen means the area it sits in has, by definition, been fully played through -
+                // mark it cleared too, the same as genuinely reaching the next area in sequence.
+                AreaProgressStore.MarkCleared(s_currentLevelKey, newExactArea.start);
+            }
         }
 
         /// <summary>
@@ -167,6 +246,24 @@ namespace AreaInfoDisplayOnPause
             return AppendPersonalBest(GetCurrentAreaDisplayText());
         }
 
+        /// <summary>
+        /// "Babe" if screenIndex1 is exactly one of the level's 3 ending screens (see
+        /// s_babeScreens; the 3 aren't distinguished from each other), overriding whatever the
+        /// normal Location-based resolution would otherwise show for that single screen. Null
+        /// everywhere else.
+        /// </summary>
+        private static string GetBabeDisplayText(int screenIndex1)
+        {
+            for (int i = 0; i < s_babeScreens.Length; i++)
+            {
+                if (s_babeScreens[i] == screenIndex1)
+                {
+                    return "Babe";
+                }
+            }
+            return null;
+        }
+
         private static string GetCurrentAreaDisplayText()
         {
             if (s_sortedLocations.Length == 0)
@@ -175,6 +272,13 @@ namespace AreaInfoDisplayOnPause
             }
 
             int screenIndex1 = Camera.CurrentScreenIndex1;
+
+            string babeText = GetBabeDisplayText(screenIndex1);
+            if (babeText != null)
+            {
+                return babeText;
+            }
+
             LocationResolver.Result resolved = LocationResolver.Resolve(s_sortedLocations, screenIndex1);
             if (resolved.Area == null)
             {
@@ -262,7 +366,11 @@ namespace AreaInfoDisplayOnPause
             {
                 return text;
             }
-            string pb = GetPersonalBestText();
+            // Once any Babe screen has ever been reached this playthrough, it's the deepest
+            // possible point - the PB line keeps showing "Babe" from then on rather than reverting
+            // to whatever real area the player is currently standing in (unlike the current-area
+            // line, which always reflects the live screen - see GetBabeDisplayText/HasReachedBabe).
+            string pb = AreaProgressStore.HasReachedBabe(s_currentLevelKey) ? "Babe" : GetPersonalBestText();
             if (pb == null)
             {
                 return text;
@@ -285,7 +393,7 @@ namespace AreaInfoDisplayOnPause
                 return NoProgressionDetailText;
             }
 
-            string pb = GetPersonalBestText();
+            string pb = AreaProgressStore.HasReachedBabe(s_currentLevelKey) ? "Babe" : GetPersonalBestText();
             string text = pb != null ? $"pb: {pb}" : null;
 
             string current = GetCurrentAreaDisplayText();

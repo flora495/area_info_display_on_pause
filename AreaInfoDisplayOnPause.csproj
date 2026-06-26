@@ -79,6 +79,7 @@
 		<Compile Include="SaveLubePatches.cs" />
 		<Compile Include="PlayerGroundChecker.cs" />
 		<Compile Include="PlayTimeAccessor.cs" />
+		<Compile Include="EndingScreensAccessor.cs" />
 
 		<Compile Include="Properties\AssemblyInfo.cs" />
 	</ItemGroup>

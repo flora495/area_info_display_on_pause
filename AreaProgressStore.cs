@@ -30,6 +30,15 @@ namespace AreaInfoDisplayOnPause
         {
             public readonly Dictionary<int, AreaEntry> Areas = new Dictionary<int, AreaEntry>();
             public int NextOrder;
+
+            /// <summary>
+            /// Whether any of the level's 3 "Babe" ending screens has ever been reached this
+            /// playthrough. Sticky for the rest of the playthrough once set (persisted, not reset
+            /// by leaving the screen) - reaching a Babe ending is the deepest possible point, so
+            /// PB display should keep showing "Babe" from then on rather than reverting to
+            /// whatever real area the player happens to be standing in afterwards.
+            /// </summary>
+            public bool HasReachedBabe;
         }
 
         // SaveLube.SaveCombinedSaveFile() (and so AreaProgressStore.Save, via SaveLubePatches)
@@ -69,6 +78,7 @@ namespace AreaInfoDisplayOnPause
                     LevelEntry levelEntry = new LevelEntry
                     {
                         NextOrder = (int?)levelElement.Attribute("nextOrder") ?? 0,
+                        HasReachedBabe = (bool?)levelElement.Attribute("reachedBabe") ?? false,
                     };
                     foreach (XElement areaElement in levelElement.Elements("Area"))
                     {
@@ -104,7 +114,8 @@ namespace AreaInfoDisplayOnPause
                 {
                     XElement levelElement = new XElement("Level",
                         new XAttribute("key", levelPair.Key),
-                        new XAttribute("nextOrder", levelPair.Value.NextOrder));
+                        new XAttribute("nextOrder", levelPair.Value.NextOrder),
+                        new XAttribute("reachedBabe", levelPair.Value.HasReachedBabe));
                     foreach (KeyValuePair<int, AreaEntry> areaPair in levelPair.Value.Areas)
                     {
                         levelElement.Add(new XElement("Area",
@@ -133,24 +144,31 @@ namespace AreaInfoDisplayOnPause
 
         /// <summary>
         /// Called whenever the resolved area changes during play. Registers brand-new areas, or
-        /// bumps the attempt count when re-entering an already-known area whose first-visit Order
-        /// is later than the area just left (i.e. climbing up into it, in visit-sequence terms) -
-        /// climbing up into an area is a new attempt at it; falling down into one isn't. Also
-        /// doubles as the level-start "quiet" resolve when called with previousStart: null, since
-        /// a null previousStart never triggers the attempt-count bump on an already-known area.
+        /// bumps the attempt count when re-entering an already-known area from a physically lower
+        /// screen (i.e. climbing up into it) - climbing up into an area is a new attempt at it;
+        /// falling down into one isn't. Also doubles as the level-start "quiet" resolve when called
+        /// with previousStart: null, since a null previousStart never triggers the attempt-count
+        /// bump on an already-known area.
         ///
-        /// This compares Order (first-visit sequence), not raw screen number: this game has
-        /// warps, so a screen number alone isn't reliable as "is this area higher up than the
-        /// other one" (a warp can land the player on a high screen number that isn't genuinely
-        /// further along) - but the actual sequence the player visited areas in still is.
+        /// This compares the raw screen number (start), not first-visit Order: attempt-counting is
+        /// about whether *this specific transition* was a climb or a fall, which is inherently a
+        /// spatial question, not a "have I been here before" one. A side path branching off below
+        /// the main area is always discovered chronologically *after* the main area (so it always
+        /// has a later Order), even though it's spatially lower - so comparing Order here would
+        /// wrongly treat "climbing back up out of the side path" the same as "falling into it",
+        /// and never bump the main area's attempt count. Comparing actual screen position avoids
+        /// that, at the cost of the (accepted, documented) warp caveat: a warp can land the player
+        /// on a screen number that doesn't reflect genuine further progress. PB/Progression Detail
+        /// still use Order for that reason - only this attempt-direction check needs real position.
         ///
-        /// The very first area has no area below it to climb up from, so under the Order-
-        /// comparison rule its attempt count would only ever be set once and never bumped again.
-        /// isFirstScreenOfFirstArea carves out that one area: landing on its own literal first
-        /// screen (from anywhere) counts as a new attempt too, since that's what "starting over"
-        /// looks like for it.
+        /// forceBump lets the caller flag a transition as a fresh attempt even when newStart isn't
+        /// physically higher than previousStart - used for re-entering the *same* area after a trip
+        /// through a "gap" (AreaTracker.OnUpdate's s_awayFromLastArea), since previousStart equals
+        /// newStart in that case and the plain comparison below would never fire. Not used for the
+        /// very first area - see AreaTracker's isOnFirstScreen/BumpAttempt instead, since it has no
+        /// area below it to register a "gap departure" from in the first place.
         /// </summary>
-        public static void OnEnterArea(string levelKey, int newStart, int? previousStart, bool isFirstScreenOfFirstArea, TimeSpan playTime)
+        public static void OnEnterArea(string levelKey, int newStart, int? previousStart, bool forceBump, TimeSpan playTime)
         {
             lock (s_lock)
             {
@@ -165,18 +183,37 @@ namespace AreaInfoDisplayOnPause
                 {
                     return;
                 }
-                if (isFirstScreenOfFirstArea)
-                {
-                    newEntry.AttemptCount++;
-                    s_dirty = true;
-                    return;
-                }
-                if (levelEntry.Areas.TryGetValue(previousStart.Value, out AreaEntry previousEntry)
-                    && previousEntry.Order < newEntry.Order)
+                if (forceBump || previousStart.Value < newStart)
                 {
                     newEntry.AttemptCount++;
                     s_dirty = true;
                 }
+            }
+        }
+
+        /// <summary>
+        /// Unconditionally bumps start's attempt count (registering it first, at count 1, if this
+        /// is the very first time it's been seen). Used solely for the very first area landing back
+        /// on the literal first screen of the level (AreaTracker.OnUpdate's isOnFirstScreen check):
+        /// unlike every other area, it has no area below it to register a "left, then came back"
+        /// transition through via OnEnterArea, since there's nothing below the start of the level to
+        /// physically fall into - the first screen itself is the only signal that it's being
+        /// attempted again.
+        /// </summary>
+        public static void BumpAttempt(string levelKey, int start, TimeSpan playTime)
+        {
+            lock (s_lock)
+            {
+                LevelEntry levelEntry = GetOrCreateLevel(levelKey);
+                if (!levelEntry.Areas.TryGetValue(start, out AreaEntry entry))
+                {
+                    levelEntry.Areas[start] = new AreaEntry { Order = levelEntry.NextOrder++, AttemptCount = 1, HasFullyCleared = false, LapTime = playTime };
+                }
+                else
+                {
+                    entry.AttemptCount++;
+                }
+                s_dirty = true;
             }
         }
 
@@ -245,6 +282,28 @@ namespace AreaInfoDisplayOnPause
                 return s_levels.TryGetValue(levelKey, out LevelEntry levelEntry)
                     && levelEntry.Areas.TryGetValue(start, out AreaEntry entry)
                     && entry.HasFullyCleared;
+            }
+        }
+
+        /// <summary>Marks levelKey as having reached one of its 3 "Babe" ending screens. See LevelEntry.HasReachedBabe.</summary>
+        public static void MarkBabeReached(string levelKey)
+        {
+            lock (s_lock)
+            {
+                LevelEntry levelEntry = GetOrCreateLevel(levelKey);
+                if (!levelEntry.HasReachedBabe)
+                {
+                    levelEntry.HasReachedBabe = true;
+                    s_dirty = true;
+                }
+            }
+        }
+
+        public static bool HasReachedBabe(string levelKey)
+        {
+            lock (s_lock)
+            {
+                return s_levels.TryGetValue(levelKey, out LevelEntry levelEntry) && levelEntry.HasReachedBabe;
             }
         }
 

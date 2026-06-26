@@ -28,6 +28,7 @@ namespace AreaInfoDisplayOnPause
             var harmony = new Harmony("F.AreaInfoDisplayOnPause.Harmony");
             LocationSettingsAccessor.Initialize();
             PlayTimeAccessor.Initialize();
+            EndingScreensAccessor.Initialize();
             MenuFactoryPatches.Apply(harmony);
             LevelManagerPatches.Apply(harmony);
             SaveLubePatches.Apply(harmony);
