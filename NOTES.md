@@ -675,6 +675,45 @@ order(area) = そのプレイ（セーブ）中で、そのエリアに初めて
 
 これにより、PBの「Babe」表示は完全に既存のOrder/BestScreenIndexの計算結果から導出されるだけの見た目上の表示になり、Babeに到達した後でも新しいエリアを発見すればそちらに正しく上書きされるようになった。
 
+## パフォーマンス改善: `AreaTracker.OnUpdate`の画面番号が変わっていないフレームを早期リターン
+
+`OnUpdate`は足場に立っている間毎フレーム呼ばれるが、`LocationResolver.Resolve`（エリア一覧の線形走査）から各種判定まで、**画面番号(`screenIndex1`)が前回フレームと変わっていなくても毎回フルに再計算**していた。プレイヤーが同じ画面内に留まっている間（その場で動いている・止まっている等、画面をまたいで移動していない間）は結果が変わるはずがないので、これは無駄な再計算だった。
+
+**修正**: 新しい`s_lastScreenIndex1`（`int?`、レベル(再)開始時に`null`に戻す）を追加し、`screenIndex1`を計算した直後、前回と同じ値なら即座に`return`するようにした。
+
+```csharp
+int screenIndex1 = Camera.CurrentScreenIndex1;
+if (screenIndex1 == s_lastScreenIndex1)
+{
+    return;
+}
+s_lastScreenIndex1 = screenIndex1;
+```
+
+これは挙動を変えない安全な最適化である。`resolved`・各種判定（`isOnFirstScreen`/`isOnBabeScreen`/突破済み判定等）はすべて`screenIndex1`とこの関数が前回更新した状態だけから決まる純粋な計算なので、`screenIndex1`が変わっていない限り再計算しても前回と全く同じ結果にしかならない。
+
+### 追加改善: 画面番号チェックを足場判定より先に行う
+
+`PlayerGroundChecker.IsOnGround()`の実体を確認すると、`EntityManager.instance.Find<PlayerEntity>()`（エンティティ検索）→`GetComponent<BodyComp>()`（コンポーネント検索）という、単純なプロパティ読み取りより重い処理だった。逆コンパイルで確認したところ、ゲーム本体の`LocationComp.IsPlayerOnGround()`（「新しいエリアを発見した」通知をゲートする判定）も全く同じ処理を行っており、結果をキャッシュした値を覗き見るような手段は無い（`private`であることに加え、向こうも毎回同じ検索をやり直しているだけ）ことを確認した。
+
+上記の`screenIndex1`変化チェックを、この足場判定**より前**に移動した。
+
+```csharp
+int screenIndex1 = Camera.CurrentScreenIndex1;
+if (screenIndex1 == s_lastScreenIndex1)
+{
+    return;
+}
+
+if (!PlayerGroundChecker.IsOnGround())
+{
+    return;
+}
+s_lastScreenIndex1 = screenIndex1;
+```
+
+`s_lastScreenIndex1`の更新は変わらず両チェックを通過した後（足場判定もパスした後）に行うため、「足場判定でスキップする場合」と「画面番号未変更でスキップする場合」で最終的な分岐結果（する／しない）は変わらない。順序を入れ替えただけなので挙動は変わらないが、画面番号が変わっていないフレームでは、より重い`IsOnGround()`の呼び出し自体も省略できる。
+
 ## Mods設定画面の枠サイズ不具合の根本修正（パディング方式から廃止）
 
 `Show Total`オプション（`TotalDisplayModeOption`）の表示テキストが`Always`/`Never`/`After Clear`で長さが違うため、Mods設定画面（メイン・ポーズ両メニュー）をある値で開いた状態のまま、その場で別の値に切り替えると、枠のサイズが追従せずテキストがはみ出す不具合があった。

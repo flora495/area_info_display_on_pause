@@ -108,8 +108,8 @@
 - [x] Babe画面にいる間、PB行（`PB: Babe`）・Progression Detailの`pb:`行も同様に`Babe`になる
 - [x] Babe画面から1画面でも離れる（先に進む・下に落ちる）と、**現在地表示**は通常のエリア表示に戻る。**PB行・`pb:`行**は、PBの実体（裏側で追跡しているエリア・ページ）がそのBabe画面のままなら`Babe`の表示を維持する（`Babe`は専用の状態ではなく、PBの結果がたまたまBabe画面に一致した時だけ表示上差し替えているだけ）
 - [x] Babeに到達した後、それまで訪れていない新しいエリアに入ると、PB行・`pb:`行は`Babe`から、その新しいエリアの表示（`エリア名 ページ`）に正しく更新される（Babeに到達しても裏側の扱いは通常のエリアと変わらないため）
-- [ ] カスタムレベル（`level_settings.xml`に`ending_screen`/`ending_screen_second`/`ending_screen_third`があるもの）でも、該当画面で`Babe`が表示される
-- [ ] Babe画面に到達すると、その画面が属する本来のエリア（例: `main babe`の`The Tower`4枚目がBabeの場合は`The Tower`自身）が「突破済み」になる（**Show Total = 突破後に表示**設定で、Babeから離れた後の`The Tower`の表示が`n/m`形式に切り替わっていることで確認）
+- [x] カスタムレベル（`level_settings.xml`に`ending_screen`/`ending_screen_second`/`ending_screen_third`があるもの）でも、該当画面で`Babe`が表示される
+- [x] Babe画面に到達すると、その画面が属する本来のエリア（例: `main babe`の`The Tower`4枚目がBabeの場合は`The Tower`自身）が「突破済み」になる（**Show Total = 突破後に表示**設定で、Babeから離れた後の`The Tower`の表示が`n/m`形式に切り替わっていることで確認）
 
 ## 13. カスタムマップごとに調査する
 - [x] main babe

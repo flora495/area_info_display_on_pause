@@ -52,6 +52,12 @@ namespace AreaInfoDisplayOnPause
         private static bool s_wasOnFirstScreen;
 
         /// <summary>
+        /// screenIndex1 as of the last OnUpdate call that didn't skip via the unchanged-screen
+        /// guard below. Null right after a level (re)load so the very first call always runs.
+        /// </summary>
+        private static int? s_lastScreenIndex1;
+
+        /// <summary>
         /// Toggled by ProgressionDetailToggle in the pause menu; swaps GetDisplayText over to the
         /// visited-areas breakdown instead of the current area's own info.
         /// </summary>
@@ -66,6 +72,7 @@ namespace AreaInfoDisplayOnPause
             s_babeScreens = EndingScreensAccessor.GetBabeScreens();
             s_lastExactArea = null;
             s_awayFromLastArea = false;
+            s_lastScreenIndex1 = null;
             ShowProgressionDetail = false;
 
             if (s_sortedLocations.Length == 0)
@@ -116,6 +123,19 @@ namespace AreaInfoDisplayOnPause
                 return;
             }
 
+            // Checked before the (pricier, entity/component-lookup-based) ground check below: if
+            // the screen hasn't changed since the last frame that actually ran past both checks,
+            // nothing about the resolved area, attempt/clear/Babe checks, or best-progress
+            // tracking could have changed either - they're all pure functions of screenIndex1 plus
+            // state this same method already updated last time it ran. Skipping re-derives nothing
+            // different, just for free, and (this being first) also skips the ground check itself
+            // on every such frame.
+            int screenIndex1 = Camera.CurrentScreenIndex1;
+            if (screenIndex1 == s_lastScreenIndex1)
+            {
+                return;
+            }
+
             // Only register area progress (order/attempts/cleared) once the player has actually
             // landed somewhere, not while merely passing through mid-air - same gate the engine
             // itself uses before updating its own current-location/new-area-discovered state.
@@ -123,8 +143,8 @@ namespace AreaInfoDisplayOnPause
             {
                 return;
             }
+            s_lastScreenIndex1 = screenIndex1;
 
-            int screenIndex1 = Camera.CurrentScreenIndex1;
             LocationResolver.Result resolved = LocationResolver.Resolve(s_sortedLocations, screenIndex1);
 
             bool isOnBabeScreen = GetBabeDisplayText(screenIndex1) != null;
