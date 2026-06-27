@@ -30,10 +30,13 @@ namespace AreaInfoDisplayOnPause
 
         /// <summary>
         /// The level's 3 "Babe" ending screens (see EndingScreensAccessor), in Normal/New Babe
-        /// Plus/Owl order. Purely a display-time override (GetBabeDisplayText) - standing exactly
-        /// on one of these screens shows "Babe N" instead of the normal area/PB text, but doesn't
-        /// touch AreaProgressStore at all, so the real Location underneath keeps tracking normally
-        /// and the override disappears the moment the player moves off that one screen.
+        /// Plus/Owl order (not otherwise distinguished - see GetBabeDisplayText). Purely a
+        /// display-time substitution - standing exactly on one of these screens shows "Babe"
+        /// instead of the normal area text, and GetPersonalBestText shows "Babe" whenever the PB's
+        /// own deepest screen happens to land on one of these, but neither touches
+        /// AreaProgressStore at all: the real Location underneath keeps tracking normally
+        /// (Order/AttemptCount/BestScreenIndex/HasFullyCleared), so the override is just whatever
+        /// those numbers currently resolve to, not a separate sticky state of its own.
         /// </summary>
         private static int[] s_babeScreens = new int[0];
 
@@ -83,10 +86,6 @@ namespace AreaInfoDisplayOnPause
             // wouldn't see this until the next frame's transition, if ever (it only fires on
             // landing, and the player may already have been standing there before the reload).
             bool isOnBabeScreen = GetBabeDisplayText(screenIndex1) != null;
-            if (isOnBabeScreen)
-            {
-                AreaProgressStore.MarkBabeReached(s_currentLevelKey);
-            }
 
             if (!resolved.IsExactMatch)
             {
@@ -129,10 +128,6 @@ namespace AreaInfoDisplayOnPause
             LocationResolver.Result resolved = LocationResolver.Resolve(s_sortedLocations, screenIndex1);
 
             bool isOnBabeScreen = GetBabeDisplayText(screenIndex1) != null;
-            if (isOnBabeScreen)
-            {
-                AreaProgressStore.MarkBabeReached(s_currentLevelKey);
-            }
 
             // The very first area has no area below it to register a "left, then came back"
             // transition through in the usual sense - the only thing below it is the literal
@@ -348,6 +343,12 @@ namespace AreaInfoDisplayOnPause
         /// AreaProgressStore.GetPersonalBest for why Order rather than raw screen number) and the
         /// deepest page ever reached within it - e.g. "Colossal Drain 4" if the player got to page
         /// 4 of it but never reached page 5. Null if nothing's been reached yet.
+        ///
+        /// "Babe" instead, if that deepest page happens to land exactly on one of the level's 3
+        /// Babe ending screens - this is purely a display substitution (the underlying area/Order/
+        /// page tracking is completely unaware of it), so it's automatically overwritten the moment
+        /// the PB later moves past that point onto some other, later-discovered area, the same as
+        /// any other area's PB text would be.
         /// </summary>
         private static string GetPersonalBestText()
         {
@@ -355,6 +356,11 @@ namespace AreaInfoDisplayOnPause
             if (!pb.HasValue || pb.Value.BestScreenIndex == 0)
             {
                 return null;
+            }
+            string babeText = GetBabeDisplayText(pb.Value.BestScreenIndex);
+            if (babeText != null)
+            {
+                return babeText;
             }
             Location? area = FindLocation(pb.Value.Start);
             if (!area.HasValue)
@@ -378,11 +384,7 @@ namespace AreaInfoDisplayOnPause
             {
                 return text;
             }
-            // Once any Babe screen has ever been reached this playthrough, it's the deepest
-            // possible point - the PB line keeps showing "Babe" from then on rather than reverting
-            // to whatever real area the player is currently standing in (unlike the current-area
-            // line, which always reflects the live screen - see GetBabeDisplayText/HasReachedBabe).
-            string pb = AreaProgressStore.HasReachedBabe(s_currentLevelKey) ? "Babe" : GetPersonalBestText();
+            string pb = GetPersonalBestText();
             if (pb == null)
             {
                 return text;
@@ -405,7 +407,7 @@ namespace AreaInfoDisplayOnPause
                 return NoProgressionDetailText;
             }
 
-            string pb = AreaProgressStore.HasReachedBabe(s_currentLevelKey) ? "Babe" : GetPersonalBestText();
+            string pb = GetPersonalBestText();
             string text = pb != null ? $"pb: {pb}" : null;
 
             string current = GetCurrentAreaDisplayText();

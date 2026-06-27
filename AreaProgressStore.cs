@@ -30,15 +30,6 @@ namespace AreaInfoDisplayOnPause
         {
             public readonly Dictionary<int, AreaEntry> Areas = new Dictionary<int, AreaEntry>();
             public int NextOrder;
-
-            /// <summary>
-            /// Whether any of the level's 3 "Babe" ending screens has ever been reached this
-            /// playthrough. Sticky for the rest of the playthrough once set (persisted, not reset
-            /// by leaving the screen) - reaching a Babe ending is the deepest possible point, so
-            /// PB display should keep showing "Babe" from then on rather than reverting to
-            /// whatever real area the player happens to be standing in afterwards.
-            /// </summary>
-            public bool HasReachedBabe;
         }
 
         // SaveLube.SaveCombinedSaveFile() (and so AreaProgressStore.Save, via SaveLubePatches)
@@ -101,7 +92,6 @@ namespace AreaInfoDisplayOnPause
                 LevelEntry levelEntry = new LevelEntry
                 {
                     NextOrder = (int?)levelElement.Attribute("nextOrder") ?? 0,
-                    HasReachedBabe = (bool?)levelElement.Attribute("reachedBabe") ?? false,
                 };
                 foreach (XElement areaElement in levelElement.Elements("Area"))
                 {
@@ -160,8 +150,7 @@ namespace AreaInfoDisplayOnPause
             {
                 XElement levelElement = new XElement("Level",
                     new XAttribute("key", levelPair.Key),
-                    new XAttribute("nextOrder", levelPair.Value.NextOrder),
-                    new XAttribute("reachedBabe", levelPair.Value.HasReachedBabe));
+                    new XAttribute("nextOrder", levelPair.Value.NextOrder));
                 foreach (KeyValuePair<int, AreaEntry> areaPair in levelPair.Value.Areas)
                 {
                     levelElement.Add(new XElement("Area",
@@ -366,28 +355,6 @@ namespace AreaInfoDisplayOnPause
                 return s_levels.TryGetValue(levelKey, out LevelEntry levelEntry)
                     && levelEntry.Areas.TryGetValue(start, out AreaEntry entry)
                     && entry.HasFullyCleared;
-            }
-        }
-
-        /// <summary>Marks levelKey as having reached one of its 3 "Babe" ending screens. See LevelEntry.HasReachedBabe.</summary>
-        public static void MarkBabeReached(string levelKey)
-        {
-            lock (s_lock)
-            {
-                LevelEntry levelEntry = GetOrCreateLevel(levelKey);
-                if (!levelEntry.HasReachedBabe)
-                {
-                    levelEntry.HasReachedBabe = true;
-                    s_dirty = true;
-                }
-            }
-        }
-
-        public static bool HasReachedBabe(string levelKey)
-        {
-            lock (s_lock)
-            {
-                return s_levels.TryGetValue(levelKey, out LevelEntry levelEntry) && levelEntry.HasReachedBabe;
             }
         }
 

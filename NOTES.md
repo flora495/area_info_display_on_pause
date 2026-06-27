@@ -661,6 +661,20 @@ order(area) = そのプレイ（セーブ）中で、そのエリアに初めて
 - **Babeに到達したら、その画面が属する本来のエリアも「突破済み」扱いにする（追加要望）**: 例えば`main babe`で`The Tower`エリア4枚目にBabeがいる場合、Babe到達と同時に`The Tower`自体も突破済みになる。`AreaTracker.OnUpdate`/`OnLevelStart`で、Babe画面に一致した時点の`resolved.Area`（exact matchの場合のみ）に対して`AreaProgressStore.MarkCleared`を呼ぶ。
   - 呼ぶタイミングに注意が必要だった: その時点でそのエリアがまだ一度も登録されていない場合（`AreaProgressStore.MarkCleared`は未登録のエリアに対しては何もしない一方通行のno-op）、先に`OnEnterArea`によるエリア登録が完了してから呼ばないと取りこぼす。`OnUpdate`では関数の最後（`UpdateBestProgress`の後）、`OnLevelStart`では`OnEnterArea`呼び出しの直後に、それぞれ`MarkCleared`を移動して対処した
 
+### 訂正: `HasReachedBabe`（永続スティッキー方式）を撤回し、表示だけの差し替えに戻す
+
+上記の「`HasReachedBabe`で永続的に`PB: Babe`を維持する」という修正は、後にユーザーから「Babeの裏側の扱いは本来のエリア（例: `The Tower 4`）と何ら変わらないはず。Babeの後に新しい別のエリアに入れば、PBはそちらに上書きされるべき」という指摘を受け、**撤回した**。
+
+つまり正しい仕様は: PBの裏側のデータ（`Order`・`BestScreenIndex`）は常に通常の計算のままで、表示する瞬間だけ「その`BestScreenIndex`がたまたま3つのBabe画面のどれかと一致するなら`Babe`と表示する」という、**完全にライブな（状態を持たない）判定**にすべきだった。`HasReachedBabe`という独自の永続フラグは不要かつ誤り。
+
+**修正**:
+- `AreaProgressStore`から`LevelEntry.HasReachedBabe`フィールド、XMLの`reachedBabe`属性、`MarkBabeReached`/`HasReachedBabe`メソッドを完全に削除
+- `AreaTracker.OnUpdate`/`OnLevelStart`から`MarkBabeReached`の呼び出しを削除（`isOnBabeScreen`自体は突破済み判定のために引き続き必要なので残す）
+- `AreaTracker.GetPersonalBestText()`内で、`AreaProgressStore.GetPersonalBest`が返した`BestScreenIndex`に対して`GetBabeDisplayText(...)`を呼び、それがBabe画面に一致する場合だけ`"Babe"`を返すようにした（一致しなければ通常の`"{エリア名} {ページ}"`を返す、既存の計算そのまま）
+- `AppendPersonalBest`・`GetProgressionDetailText`は、`HasReachedBabe`の分岐を削除し、単純に`GetPersonalBestText()`を呼ぶだけに戻した
+
+これにより、PBの「Babe」表示は完全に既存のOrder/BestScreenIndexの計算結果から導出されるだけの見た目上の表示になり、Babeに到達した後でも新しいエリアを発見すればそちらに正しく上書きされるようになった。
+
 ## Mods設定画面の枠サイズ不具合の根本修正（パディング方式から廃止）
 
 `Show Total`オプション（`TotalDisplayModeOption`）の表示テキストが`Always`/`Never`/`After Clear`で長さが違うため、Mods設定画面（メイン・ポーズ両メニュー）をある値で開いた状態のまま、その場で別の値に切り替えると、枠のサイズが追従せずテキストがはみ出す不具合があった。
