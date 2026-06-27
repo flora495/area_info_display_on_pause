@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using JumpKing;
 using JumpKing.MiscSystems.LocationText;
 using LanguageJK;
@@ -302,7 +303,7 @@ namespace AreaInfoDisplayOnPause
             }
 
             Location area = resolved.Area.Value;
-            string name = language.ResourceManager.GetString(area.name) ?? area.name;
+            string name = GetAreaDisplayName(area.name);
             // Page numbers count from "unlock", not "start": when start < unlock (e.g. False
             // Kings Keep: start=10, unlock=11), screens before unlock belong to the previous
             // area as far as the exact-match resolver is concerned (see LocationResolver), so
@@ -360,7 +361,7 @@ namespace AreaInfoDisplayOnPause
             {
                 return null;
             }
-            string name = language.ResourceManager.GetString(area.Value.name) ?? area.Value.name;
+            string name = GetAreaDisplayName(area.Value.name);
             int page = pb.Value.BestScreenIndex - area.Value.unlock + 1;
             return $"{name} {page}";
         }
@@ -436,7 +437,23 @@ namespace AreaInfoDisplayOnPause
             {
                 return null;
             }
-            return language.ResourceManager.GetString(location.Value.name) ?? location.Value.name;
+            return GetAreaDisplayName(location.Value.name);
+        }
+
+        // Some custom levels' location names embed markup tags meant for other text-customisation
+        // mods (e.g. "{color=\"#eb5886\"}Subspace Spire" for MoreTextOptions' colour markers).
+        // Those mods' own renderers expect at most one such tag per drawn string; this mod's
+        // display text can embed the same area name twice in one string (the "PB: ..." line and
+        // the current-area line), which doubles up the tag and breaks their line-break handling
+        // (observed on Workshop level 3397533142, caused by MoreTextOptions). Stripping any such
+        // tag before using a name avoids the interaction entirely, regardless of which other mod
+        // a level's author had in mind when writing it.
+        private static readonly Regex MarkupTagRegex = new Regex("\\{[a-zA-Z]+=\"[^\"]*\"\\}");
+
+        private static string GetAreaDisplayName(string nameKey)
+        {
+            string name = language.ResourceManager.GetString(nameKey) ?? nameKey;
+            return MarkupTagRegex.Replace(name, string.Empty);
         }
 
         private static Location? FindLocation(int start)

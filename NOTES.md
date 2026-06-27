@@ -725,3 +725,31 @@ order(area) = そのプレイ（セーブ）中で、そのエリアに初めて
 処理負荷は、既存データ（`BestScreenIndex`・`Order`）の整数比較のみで、ループや追加の走査は発生しないため無視できるレベル（ユーザーへの説明済み）。
 
 `TEST_CASES.md`5節に、実際に確認すべき項目として追加した（BoE: Intense heat wind hell→doodlebugのワープで確認予定）。
+
+## 不具合: カスタムレベル `3397533142` でPB行が枠からはみ出る
+
+`AreaInfoTextInfo`の枠サイズ測定（`GetSize`）は、`Font.MeasureString`の系統的な実描画幅との誤差を補正するため、末尾に`MeasureBuffer`（`"12345"`）を付けて測定する仕組みだった（エンジン自身の`IStatInfo`と同じ手法）。
+
+```csharp
+base.Text = AreaTracker.GetDisplayText() + MeasureBuffer;
+```
+
+`GetDisplayText()`は複数行になり得る（`"PB: ...\n現在地表示..."`）。`SpriteFont.MeasureString`は複数行文字列に対して**一番幅の広い行の幅**を返すが、上記のコードは**文字列全体の末尾（＝最後の行）にしかバッファを付けない**。最後の行（現在地表示）がいつも一番長いとは限らず、`3397533142`では**PB行（1行目）のエリア名の方が長く**、その行にはバッファが効かないまま系統誤差が残り、枠が実描画幅よりわずかに狭く計算されてはみ出していた。
+
+**修正**: `GetSize()`/`Draw()`の両方で、文字列を行ごとに分割し、各行を`Font.MeasureString`で個別に測ってから**実際に一番幅が広い行**を特定し、その行にだけ`MeasureBuffer`を付けるように変更した（`AddBufferToWidestLine`/`GetWidestLine`/`GetWidestLineIndex`）。`Draw()`側の中央寄せオフセット計算（バッファ分の半分だけ右にずらす）も、同じ「実際に一番幅が広い行」を基準に計算し直す必要があった。
+
+### 続報: 同じ`3397533142`で別原因によるはみ出し（他mod「MoreTextOptions」との組み合わせ）
+
+上記の修正後も実機で同じレベルの一部エリア（`Subspace Spire`）でPB行のはみ出しが再発した。今回は上記の「一番長い行」の問題ではなく、**全く別の原因**だった。
+
+このレベルの`gui/location_settings.xml`では、エリア名自体に他mod「MoreTextOptions」（Workshop ID `3275249832`, Zebra氏）向けの色マーカーが直接埋め込まれていた:
+
+```xml
+<name>{color="#eb5886"}Subspace Spire</name>
+```
+
+MoreTextOptionsの`PatchSpriteBatch`（`SpriteBatch.DrawString`へのパッチ、逆コンパイルで確認）は、文字列内に`{color="#RRGGBB"}`マーカーが**1個だけ**ある場合は単に色を変えて元の文字列をそのまま描画するだけだが、**マーカーが2個以上ある場合**は、マーカーで文字列を分割し、各セグメントを`Game1.spriteBatch.DrawString(font, segment, val, color)`で順番に描画する。この時`val.X`はセグメントの幅ぶん毎回加算されるが、**`val.Y`は一度も更新されない**（改行を一切考慮しない実装）。
+
+このmod自身の表示テキストは、PBが有効だと**同じエリア名を1つの文字列内に2回**埋め込む（`"PB: {marker}Subspace Spire 1\n{marker}Subspace Spire 1/x (#2)"`）。これによりマーカーが2個になり、MoreTextOptionsの上記の「2個以上は改行を無視する」分岐に入ってしまい、本来`\n`で区切られているはずの2行が、横一列に押し出されて描画される。枠のサイズ自体は（測定時はマーカーが除去されるため）2行分正しく計算されているが、実際の描画が1行に押し込まれて幅だけが2行分横に伸びるため、結果的に右側にはみ出して見える。
+
+**修正**: このmod側で、エリア名を表示に使う直前に`{キー="値"}`形式のマーカーをすべて正規表現で除去するようにした（`AreaTracker.GetAreaDisplayName`、`MarkupTagRegex = new Regex("\\{[a-zA-Z]+=\"[^\"]*\"\\}")`）。`GetCurrentAreaDisplayText`・`GetPersonalBestText`・`FindAreaName`の3箇所すべてで、`language.ResourceManager.GetString(...) ?? 生の名前`の直後に必ずこの処理を通すように統一した。これにより、このmodが組み立てる文字列にはマーカーが一切含まれなくなり、他mod側の実装に関わらずこの組み合わせ自体が起きなくなる。

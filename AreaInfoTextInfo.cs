@@ -22,7 +22,7 @@ namespace AreaInfoDisplayOnPause
 
         public override Point GetSize()
         {
-            base.Text = AreaTracker.GetDisplayText() + MeasureBuffer;
+            base.Text = AddBufferToWidestLine(AreaTracker.GetDisplayText());
             return base.GetSize();
         }
 
@@ -31,14 +31,54 @@ namespace AreaInfoDisplayOnPause
             string text = AreaTracker.GetDisplayText();
             base.Text = text;
 
-            // The frame was sized to fit text + MeasureBuffer (see GetSize), but only the real
-            // text is drawn here, and JumpKing's own GuiFormat.DrawMenuItems always draws flush
-            // against the frame's left padding - never centered. That leaves a gap on the right
-            // equal to the buffer's measured width. Shifting the draw position right by half of
-            // that gap centers the text within the frame instead.
-            float bufferWidth = base.Font.MeasureString(text + MeasureBuffer).X - base.Font.MeasureString(text).X;
+            // The frame was sized to fit the widest line + MeasureBuffer (see GetSize), but only
+            // the real text is drawn here, and JumpKing's own GuiFormat.DrawMenuItems always draws
+            // flush against the frame's left padding - never centered. That leaves a gap on the
+            // right equal to the buffer's measured width. Shifting the draw position right by half
+            // of that gap centers the text within the frame instead.
+            string widestLine = GetWidestLine(text);
+            float bufferWidth = base.Font.MeasureString(widestLine + MeasureBuffer).X - base.Font.MeasureString(widestLine).X;
             int offsetX = (int)(bufferWidth / 2f);
             base.Draw(x + offsetX, y, selected);
+        }
+
+        /// <summary>
+        /// Appends MeasureBuffer to whichever line of text is actually the widest, instead of
+        /// always the last one. The display text can be multiple lines (e.g. "PB: ..." above the
+        /// current area, or the full Progression Detail list) and SpriteFont.MeasureString takes
+        /// the widest line's width for multi-line strings - appending the buffer to the end of the
+        /// whole string only padded the last line, so whenever an earlier line (like a long PB
+        /// area name) was actually the widest, its systematic under-measurement went uncorrected
+        /// and the frame ended up too narrow for it.
+        /// </summary>
+        private string AddBufferToWidestLine(string text)
+        {
+            string[] lines = text.Split('\n');
+            int widestIndex = GetWidestLineIndex(lines);
+            lines[widestIndex] += MeasureBuffer;
+            return string.Join("\n", lines);
+        }
+
+        private string GetWidestLine(string text)
+        {
+            string[] lines = text.Split('\n');
+            return lines[GetWidestLineIndex(lines)];
+        }
+
+        private int GetWidestLineIndex(string[] lines)
+        {
+            int widestIndex = 0;
+            float widestWidth = base.Font.MeasureString(lines[0]).X;
+            for (int i = 1; i < lines.Length; i++)
+            {
+                float width = base.Font.MeasureString(lines[i]).X;
+                if (width > widestWidth)
+                {
+                    widestWidth = width;
+                    widestIndex = i;
+                }
+            }
+            return widestIndex;
         }
     }
 }
