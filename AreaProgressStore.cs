@@ -57,43 +57,65 @@ namespace AreaInfoDisplayOnPause
         {
             lock (s_lock)
             {
-                s_levels = new Dictionary<string, LevelEntry>();
-                s_dirty = false;
-                if (!File.Exists(path))
+                LoadInternal(path);
+            }
+        }
+
+        /// <summary>
+        /// Same as Load, but also marks the result dirty so the next regular autosave (the
+        /// SaveLube postfix calling Save(mainPath)) persists it into the main progress file too -
+        /// otherwise the main file would stay stale until some unrelated change (e.g. moving to a
+        /// new screen) happened to mark it dirty again. Used when restoring a per-save-slot
+        /// snapshot (see MoreSavesPatches), since at that point the in-memory state has just
+        /// diverged from whatever the main file currently holds on disk.
+        /// </summary>
+        public static void LoadSnapshot(string path)
+        {
+            lock (s_lock)
+            {
+                LoadInternal(path);
+                s_dirty = true;
+            }
+        }
+
+        private static void LoadInternal(string path)
+        {
+            s_levels = new Dictionary<string, LevelEntry>();
+            s_dirty = false;
+            if (!File.Exists(path))
+            {
+                return;
+            }
+            XElement root = XDocument.Load(path).Root;
+            if (root == null)
+            {
+                return;
+            }
+            foreach (XElement levelElement in root.Elements("Level"))
+            {
+                string key = (string)levelElement.Attribute("key");
+                if (string.IsNullOrEmpty(key))
                 {
-                    return;
+                    continue;
                 }
-                XElement root = XDocument.Load(path).Root;
-                if (root == null)
+                LevelEntry levelEntry = new LevelEntry
                 {
-                    return;
-                }
-                foreach (XElement levelElement in root.Elements("Level"))
+                    NextOrder = (int?)levelElement.Attribute("nextOrder") ?? 0,
+                    HasReachedBabe = (bool?)levelElement.Attribute("reachedBabe") ?? false,
+                };
+                foreach (XElement areaElement in levelElement.Elements("Area"))
                 {
-                    string key = (string)levelElement.Attribute("key");
-                    if (string.IsNullOrEmpty(key))
+                    int start = (int?)areaElement.Attribute("start") ?? 0;
+                    levelEntry.Areas[start] = new AreaEntry
                     {
-                        continue;
-                    }
-                    LevelEntry levelEntry = new LevelEntry
-                    {
-                        NextOrder = (int?)levelElement.Attribute("nextOrder") ?? 0,
-                        HasReachedBabe = (bool?)levelElement.Attribute("reachedBabe") ?? false,
+                        Order = (int?)areaElement.Attribute("order") ?? 0,
+                        AttemptCount = (int?)areaElement.Attribute("attempts") ?? 0,
+                        HasFullyCleared = (bool?)areaElement.Attribute("cleared") ?? false,
+                        LapTime = TimeSpan.FromTicks((long?)areaElement.Attribute("lapTicks") ?? 0),
+                        BestScreenIndex = (int?)areaElement.Attribute("bestScreenIndex") ?? 0,
                     };
-                    foreach (XElement areaElement in levelElement.Elements("Area"))
-                    {
-                        int start = (int?)areaElement.Attribute("start") ?? 0;
-                        levelEntry.Areas[start] = new AreaEntry
-                        {
-                            Order = (int?)areaElement.Attribute("order") ?? 0,
-                            AttemptCount = (int?)areaElement.Attribute("attempts") ?? 0,
-                            HasFullyCleared = (bool?)areaElement.Attribute("cleared") ?? false,
-                            LapTime = TimeSpan.FromTicks((long?)areaElement.Attribute("lapTicks") ?? 0),
-                            BestScreenIndex = (int?)areaElement.Attribute("bestScreenIndex") ?? 0,
-                        };
-                    }
-                    s_levels[key] = levelEntry;
                 }
+                s_levels[key] = levelEntry;
             }
         }
 
@@ -109,28 +131,50 @@ namespace AreaInfoDisplayOnPause
                 {
                     return;
                 }
-                root = new XElement("AreaProgress");
-                foreach (KeyValuePair<string, LevelEntry> levelPair in s_levels)
-                {
-                    XElement levelElement = new XElement("Level",
-                        new XAttribute("key", levelPair.Key),
-                        new XAttribute("nextOrder", levelPair.Value.NextOrder),
-                        new XAttribute("reachedBabe", levelPair.Value.HasReachedBabe));
-                    foreach (KeyValuePair<int, AreaEntry> areaPair in levelPair.Value.Areas)
-                    {
-                        levelElement.Add(new XElement("Area",
-                            new XAttribute("start", areaPair.Key),
-                            new XAttribute("order", areaPair.Value.Order),
-                            new XAttribute("attempts", areaPair.Value.AttemptCount),
-                            new XAttribute("cleared", areaPair.Value.HasFullyCleared),
-                            new XAttribute("lapTicks", areaPair.Value.LapTime.Ticks),
-                            new XAttribute("bestScreenIndex", areaPair.Value.BestScreenIndex)));
-                    }
-                    root.Add(levelElement);
-                }
+                root = BuildXml();
                 s_dirty = false;
             }
             new XDocument(root).Save(path);
+        }
+
+        /// <summary>
+        /// Unconditionally writes the current in-memory progress to path, regardless of whether
+        /// anything has changed since the last regular Save (s_dirty). Used for snapshotting
+        /// progress alongside a specific save slot (see MoreSavesPatches) - a slot snapshot needs
+        /// writing every time that slot is saved, not just when the main file happens to be dirty.
+        /// </summary>
+        public static void SaveSnapshot(string path)
+        {
+            XElement root;
+            lock (s_lock)
+            {
+                root = BuildXml();
+            }
+            new XDocument(root).Save(path);
+        }
+
+        private static XElement BuildXml()
+        {
+            var root = new XElement("AreaProgress");
+            foreach (KeyValuePair<string, LevelEntry> levelPair in s_levels)
+            {
+                XElement levelElement = new XElement("Level",
+                    new XAttribute("key", levelPair.Key),
+                    new XAttribute("nextOrder", levelPair.Value.NextOrder),
+                    new XAttribute("reachedBabe", levelPair.Value.HasReachedBabe));
+                foreach (KeyValuePair<int, AreaEntry> areaPair in levelPair.Value.Areas)
+                {
+                    levelElement.Add(new XElement("Area",
+                        new XAttribute("start", areaPair.Key),
+                        new XAttribute("order", areaPair.Value.Order),
+                        new XAttribute("attempts", areaPair.Value.AttemptCount),
+                        new XAttribute("cleared", areaPair.Value.HasFullyCleared),
+                        new XAttribute("lapTicks", areaPair.Value.LapTime.Ticks),
+                        new XAttribute("bestScreenIndex", areaPair.Value.BestScreenIndex)));
+                }
+                root.Add(levelElement);
+            }
+            return root;
         }
 
         public static void Clear()

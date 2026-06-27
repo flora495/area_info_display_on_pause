@@ -33,6 +33,7 @@ namespace AreaInfoDisplayOnPause
             LevelManagerPatches.Apply(harmony);
             SaveLubePatches.Apply(harmony);
             SaveLubePatches.LoadProgress();
+            MoreSavesPatches.Apply(harmony);
         }
 
         [OnLevelStart]

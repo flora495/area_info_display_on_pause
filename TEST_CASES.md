@@ -25,7 +25,7 @@
 
 - [x] メインメニューの設定一覧に「Show Total」「Attempt Counter」「Personal Best」「Progression Detail」の4項目が表示される（mod全体を無効化する項目は無い）
 - [x] ポーズ中のメニュー（Mods → AreaInfoDisplayOnPause）からも同じ4項目が表示・変更できる
-- [ ] 設定ファイルが存在しない状態でゲームを起動すると、デフォルト値（Show Total=突破後に表示, Attempt Counter=ON, Personal Best=ON）で動作する
+- [x] 設定ファイルが存在しない状態でゲームを起動すると、デフォルト値（Show Total=突破後に表示, Attempt Counter=ON, Personal Best=ON）で動作する
 - [x] 各トグルを変更すると`F.AreaInfoDisplayOnPause.Settings.xml`に即座に反映される
 - [x] 設定を変更した状態でゲームを完全に再起動し、変更内容が保持されている
 - [ ] **Show Total**をNEVERにした状態でMods設定画面を開き、その場でAFTER CLEAR/ALWAYSに切り替えても、テキストが枠からはみ出さない・テキストの途中に不自然な隙間が空かない（メニューを開き直さなくても、その場で枠が正しく再計算される）
@@ -122,9 +122,22 @@
 ## 13. カスタムマップごとに調査する
 - [x] main babe
 - [x] Babe of Inferno
-- [ ] Babe of Exile
-- [ ] Waterfall Babe
+- [x] Babe of Exile
+- [x] Waterfall Babe
 
 ## 14. その他
-- [ ] 有効でもチート表示がでない
+- [x] 有効でもチート表示がでない
+
+## 15. More Saves連携
+
+- [x] More Savesを導入していない状態で、このmodが今まで通り正常に動作する（起動・進捗追跡・表示のいずれにも影響が無い。`ModLoadLog.txt`にエラーが出ていないことも確認）
+- [x] More Savesを導入した状態で、Manual Saveを実行すると、そのセーブのフォルダ（`...\workshop\content\1061090\3239040787\manual\<セーブ名>\`）に`F.AreaInfoDisplayOnPause.AreaProgress.xml`が新規作成される
+- [x] 同じレベルでManual Saveを2つ（名前を変えて）作り、それぞれで異なる進捗（挑戦回数・PB等）まで進めてから保存すると、2つのセーブフォルダの`F.AreaInfoDisplayOnPause.AreaProgress.xml`の内容がそれぞれ異なる
+- [x] 上記の2つのManual Saveを順番に読み込み直すと、その都度PB・挑戦回数・突破済み等の表示が、それぞれのセーブを保存した時点の内容に正しく切り替わる
+- [x] Manual Saveを読み込んだ後、そのまま進めて**Save & Exit → Continue**（通常のオートセーブ経由）しても、Manual Save経由で復元された内容が保持されている（メインの進捗ファイルにも反映されていることの確認）
+- [x] このmod導入前に作られたManual Save（`F.AreaInfoDisplayOnPause.AreaProgress.xml`が存在しない）を読み込んでもエラーやクラッシュが起きない（何も復元されず、現在の進捗のまま）
+- [ ] **(仕様変更)** Auto Save（レベル開始時の自動保存）でも、Manualと同様にそのセーブのフォルダ（`...\workshop\content\1061090\3239040787\auto\<セーブ名>\`）に`F.AreaInfoDisplayOnPause.AreaProgress.xml`が作成・更新される
+- [ ] Auto Saveを読み込んだ時も、Manualと同様にPB・挑戦回数・突破済み等の表示が、そのAuto Saveを保存した時点の内容に正しく切り替わる
+- [ ] `SaveName`が未設定の状態（`StopSaving`〜`StartSaving`の間、例えばレベル切り替え中）でAuto Saveの保存処理が走っても、エラーや不正なパスへの書き込みが起きない
+- [ ] **(削除後の互換性確認)** このmodを導入した状態で作ったManual Saveを、このmodを削除した状態（More Savesのみ）で読み込んでも、More Saves自身は正常に読み込める（エラー・クラッシュが起きない）
 
