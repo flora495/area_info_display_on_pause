@@ -136,7 +136,7 @@
 - [x] 上記の2つのManual Saveを順番に読み込み直すと、その都度PB・挑戦回数・突破済み等の表示が、それぞれのセーブを保存した時点の内容に正しく切り替わる
 - [x] Manual Saveを読み込んだ後、そのまま進めて**Save & Exit → Continue**（通常のオートセーブ経由）しても、Manual Save経由で復元された内容が保持されている（メインの進捗ファイルにも反映されていることの確認）
 - [x] このmod導入前に作られたManual Save（`F.AreaInfoDisplayOnPause.AreaProgress.xml`が存在しない）を読み込んでもエラーやクラッシュが起きない（何も復元されず、現在の進捗のまま）
-- [ ] **(仕様変更)** Auto Save（レベル開始時の自動保存）でも、Manualと同様にそのセーブのフォルダ（`...\workshop\content\1061090\3239040787\auto\<セーブ名>\`）に`F.AreaInfoDisplayOnPause.AreaProgress.xml`が作成・更新される
+- [x] Auto Save（レベル開始時の自動保存）でも、Manualと同様にそのセーブのフォルダ（`...\workshop\content\1061090\3239040787\auto\<セーブ名>\`）に`F.AreaInfoDisplayOnPause.AreaProgress.xml`が作成・更新される
 - [ ] Auto Saveを読み込んだ時も、Manualと同様にPB・挑戦回数・突破済み等の表示が、そのAuto Saveを保存した時点の内容に正しく切り替わる
 - [ ] `SaveName`が未設定の状態（`StopSaving`〜`StartSaving`の間、例えばレベル切り替え中）でAuto Saveの保存処理が走っても、エラーや不正なパスへの書き込みが起きない
 - [ ] **(削除後の互換性確認)** このmodを導入した状態で作ったManual Saveを、このmodを削除した状態（More Savesのみ）で読み込んでも、More Saves自身は正常に読み込める（エラー・クラッシュが起きない）
