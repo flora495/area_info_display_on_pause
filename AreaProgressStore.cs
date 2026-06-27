@@ -235,6 +235,46 @@ namespace AreaInfoDisplayOnPause
         }
 
         /// <summary>
+        /// Warp-safe supplement to AreaTracker's FindNextLocation-based clear check: marks
+        /// previousStart cleared if (a) it has ever reached its own last screen
+        /// (BestScreenIndex >= previousAreaEnd) and (b) newStart's Order is exactly one more than
+        /// previousStart's - i.e. newStart really was the next area the player visited, by actual
+        /// visit sequence rather than by start position. A warp's destination can have any screen
+        /// number (see NOTES.md's TeleportLink findings), so it isn't necessarily "next by start"
+        /// even when it genuinely is the next area visited - but Order still reflects that.
+        ///
+        /// Condition (a) is what keeps this from misfiring on a side path: a side path discovered
+        /// immediately after leaving previousStart would also get Order == previousStart's
+        /// Order + 1, but the player is very unlikely to have already reached previousStart's own
+        /// last screen if they detoured into the side path before finishing it.
+        /// </summary>
+        public static void MarkClearedIfOrderSequential(string levelKey, int previousStart, int previousAreaEnd, int newStart)
+        {
+            lock (s_lock)
+            {
+                if (!s_levels.TryGetValue(levelKey, out LevelEntry levelEntry))
+                {
+                    return;
+                }
+                if (!levelEntry.Areas.TryGetValue(previousStart, out AreaEntry previousEntry)
+                    || !levelEntry.Areas.TryGetValue(newStart, out AreaEntry newEntry))
+                {
+                    return;
+                }
+                if (previousEntry.HasFullyCleared || previousEntry.BestScreenIndex < previousAreaEnd)
+                {
+                    return;
+                }
+                if (newEntry.Order != previousEntry.Order + 1)
+                {
+                    return;
+                }
+                previousEntry.HasFullyCleared = true;
+                s_dirty = true;
+            }
+        }
+
+        /// <summary>
         /// Catches up an area's cleared flag if it already has an entry (so this mod was already
         /// tracking it earlier this playthrough) but HasFullyCleared is still false despite the
         /// resume screen being past its end - e.g. it was registered but MarkCleared never fired

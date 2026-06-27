@@ -700,3 +700,28 @@ order(area) = そのプレイ（セーブ）中で、そのエリアに初めて
 1つ前の修正を取り消した後も、ポーズ画面側の設定ポップアップの表示崩れが直らないという報告を受けた。つまり問題は「メイン/ポーズの変数を分けたこと」ではなく、もっと根本的に**`MenuFactory.CreateModOptions`へのHarmonyパッチそのもの**（全modの設定ポップアップ生成で共有されている`private`メソッドへの直接パッチ）が原因だった可能性が高いと判断し、ユーザー指示によりこの一連の「根本修正」全体（`CreateModOptionsPostfix`・`RefreshModSettingsMenu`・`s_modSettingsMenu`フィールド、および`TotalDisplayModeOption`側の`GetSize()`オーバーライド・`OnOptionChange`からの`RefreshModSettingsMenu`呼び出し）を完全に削除し、`TotalDisplayModeOption`を**`CreateModOptions`パッチ導入前の状態（`PadLeft`によるパディング方式）**まで戻した。
 
 **現状**: 「設定値を`Always`等で開いた状態のまま、その場で`After Clear`に切り替えるとテキストがわずかにはみ出る」問題自体は再び未解決に戻っている。今後この問題に再度取り組む場合は、`MenuFactory`内部の共有メソッド（`CreateModOptions`等）への直接パッチは、他modの設定画面にも影響しうる高リスクな手段だったと分かったので、別のアプローチ（例: パディング量の微調整のみで妥協する等）を検討すること。
+
+### 再度の方針変更: パディングも撤去し、プレーンなテキストに戻す
+
+ユーザーから「`Show Total:`と`Never`の間に入っているスペースを削除してほしい」という明示的な指示があり、`PadLeft`によるパディングも完全に削除し、`CurrentOptionName()`を`"Show Total: " + 値`のプレーンな文字列を返すだけに戻した（パッチ導入前の最初の状態と同じ）。
+
+これにより「Total:」と値の間の見た目の隙間は完全に無くなるが、3つの選択肢の長さが再び異なるため、短い選択肢（`Never`等）でポップアップを開いた状態のまま`After Clear`に切り替えると、テキストが枠からはみ出る現象は再発する（枠サイズはポップアップを開いた瞬間の1回だけ計算されるため）。これは見た目の隙間を完全に無くすこととのトレードオフとして、ユーザーが明示的に選んだ結果。
+
+## 突破済み判定の追加: ワープでも、Order順で見て本当に次のエリアなら突破済みにする
+
+`FindNextLocation`ベースの既存の突破済み判定は、`s_sortedLocations`（`start`の昇順）で見て直後のLocationにしか反応しない。一方、ワープの行き先画面番号は`TeleportLink`が保持する任意の値であり、`start`の大小関係と無関係（「ワープ先のエリア」の節で確認済み）。そのため、**ワープで実際に「次のエリア」へ進んでも、その行き先の`start`が配列上の直後でなければ、既存の判定は反応しない**という抜けがユーザーから指摘された。
+
+`Order`（初回訪問順）はワープが絡んでも実際の訪問順序を正しく反映するため、「直前のエリアの`Order`+1にあたるエリアに到達した」を素直に追加条件にすればよさそうに見えるが、これは脇道に**初めて**入った瞬間にも成立してしまう（脇道もこのプレイで新規発見した「直後のエリア」には違いないため）。これにより「脇道に入っただけで本筋が誤って突破済みになる」という、既存のテストケースが守っていたはずの保証を壊してしまう。
+
+**採用した条件（ユーザー提案）**: 「そのエリアの`end`（最後の画面）に**一度以上到達していること**」を追加の前提条件にする。脇道は通常そのエリアの`end`より手前で分岐するため、`end`に到達する前に脇道へ入った場合はこの条件を満たさず、誤判定にならない。
+
+**実装**: `AreaProgressStore.MarkClearedIfOrderSequential(levelKey, previousStart, previousAreaEnd, newStart)`を新設。
+- 既存の`BestScreenIndex`（そのエリア内で到達した最深画面）を使い、新しいフィールドを増やさずに「`end`に到達済みか」を`BestScreenIndex >= previousAreaEnd`で判定
+- `previousEntry.Order + 1 == newEntry.Order`で「実際の訪問順で直後か」を判定
+- 両方満たした場合のみ`HasFullyCleared = true`にする
+
+`AreaTracker.OnUpdate`の既存の`FindNextLocation`チェックのすぐ後、かつ`OnEnterArea`の**後**（新規エリアの場合、`Order`が確定するのが`OnEnterArea`内のため）に呼ぶ。既存の`FindNextLocation`チェックとは独立した、追加の経路として並存する（どちらかが成立すれば突破済みになる）。
+
+処理負荷は、既存データ（`BestScreenIndex`・`Order`）の整数比較のみで、ループや追加の走査は発生しないため無視できるレベル（ユーザーへの説明済み）。
+
+`TEST_CASES.md`5節に、実際に確認すべき項目として追加した（BoE: Intense heat wind hell→doodlebugのワープで確認予定）。

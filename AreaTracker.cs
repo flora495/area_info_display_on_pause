@@ -184,6 +184,17 @@ namespace AreaInfoDisplayOnPause
 
                 int? previousStart = s_lastExactArea?.start;
                 AreaProgressStore.OnEnterArea(s_currentLevelKey, newExactArea.start, previousStart, returnedAfterLeaving, PlayTimeAccessor.GetCurrentPlayTime());
+
+                if (s_lastExactArea.HasValue)
+                {
+                    // Warp-safe supplement to the FindNextLocation check above - see
+                    // AreaProgressStore.MarkClearedIfOrderSequential for why this is needed (a
+                    // warp's destination isn't necessarily "next by start" even when it genuinely
+                    // is the next area visited) and why it's safe against side paths. Placed after
+                    // OnEnterArea so newExactArea's Order is already registered if this is the
+                    // first time it's ever been seen.
+                    AreaProgressStore.MarkClearedIfOrderSequential(s_currentLevelKey, s_lastExactArea.Value.start, s_lastExactArea.Value.end, newExactArea.start);
+                }
             }
 
             s_lastExactArea = newExactArea;
