@@ -441,15 +441,57 @@ namespace AreaInfoDisplayOnPause
             {
                 AreaProgressStore.AreaSummary area = areas[i];
                 string name = FindAreaName(area.Start) ?? area.Start.ToString();
-                string line = $"{name} (#{area.AttemptCount}) {FormatLapTime(area.LapTime)}";
+                string line = FormatProgressionDetailLine(name, area.AttemptCount, area.LapTime);
                 text = (text == null) ? line : text + "\n" + line;
             }
             return text;
         }
 
+        /// <summary>
+        /// One per-area line of the Progression Detail breakdown. Shared with ClearedMapsMenu so
+        /// a cleared map's history reads exactly like the live in-game breakdown did.
+        /// </summary>
+        public static string FormatProgressionDetailLine(string name, int attemptCount, TimeSpan lapTime)
+        {
+            return $"{name} (#{attemptCount}) {FormatLapTime(lapTime)}";
+        }
+
         private static string FormatLapTime(TimeSpan lapTime)
         {
             return $"{(int)lapTime.TotalHours}h {lapTime.Minutes}m {lapTime.Seconds}s";
+        }
+
+        /// <summary>
+        /// Snapshot of the current level's progress for ClearedMapHistoryStore, taken the moment
+        /// the ending starts (see GameCompletePatches) - before the game's own clear wipes the
+        /// in-progress data. Area/level names are resolved now, while this level's Locations are
+        /// still loaded, since the title screen (where the history is viewed) has none.
+        /// Must run after AchievementManager.OnVictory (true for the ending, which only starts
+        /// once GameLoop has called it), since that's what fills in the clear time.
+        /// </summary>
+        public static ClearedMapHistoryStore.ClearedRecord BuildClearedRecord()
+        {
+            var record = new ClearedMapHistoryStore.ClearedRecord
+            {
+                LevelKey = s_currentLevelKey,
+                LevelName = LevelKeyResolver.GetCurrentLevelTitle(),
+                ClearedAt = DateTime.Now,
+                ClearTime = PlayTimeAccessor.GetWinPlayTime(),
+            };
+            foreach (AreaProgressStore.AreaSummary area in AreaProgressStore.GetVisitedAreas(s_currentLevelKey))
+            {
+                record.Areas.Add(new ClearedMapHistoryStore.ClearedArea
+                {
+                    Start = area.Start,
+                    Order = area.Order,
+                    AttemptCount = area.AttemptCount,
+                    HasFullyCleared = area.HasFullyCleared,
+                    LapTime = area.LapTime,
+                    BestScreenIndex = area.BestScreenIndex,
+                    Name = FindAreaName(area.Start),
+                });
+            }
+            return record;
         }
 
         private static string FindAreaName(int start)

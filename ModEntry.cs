@@ -3,6 +3,7 @@ using System.Reflection;
 using HarmonyLib;
 using JumpKing.Mods;
 using JumpKing.PauseMenu;
+using JumpKing.PauseMenu.BT;
 
 namespace AreaInfoDisplayOnPause
 {
@@ -34,6 +35,7 @@ namespace AreaInfoDisplayOnPause
             SaveLubePatches.Apply(harmony);
             SaveLubePatches.LoadProgress();
             MoreSavesPatches.Apply(harmony);
+            GameCompletePatches.Apply(harmony);
         }
 
         [OnLevelStart]
@@ -63,6 +65,16 @@ namespace AreaInfoDisplayOnPause
         public static PersonalBestToggle MainPersonalBestSetting(object factory, GuiFormat format)
         {
             return new PersonalBestToggle();
+        }
+
+        /// <summary>
+        /// Main menu only - deliberately has no [PauseMenuItemSetting] counterpart, so the
+        /// cleared-maps history is only browsable from the title screen.
+        /// </summary>
+        [MainMenuItemSetting]
+        public static TextButton MainClearedMapsSetting(object factory, GuiFormat format)
+        {
+            return ClearedMapsMenu.Create();
         }
 
         [PauseMenuItemSetting]
