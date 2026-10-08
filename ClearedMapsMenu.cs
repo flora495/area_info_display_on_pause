@@ -146,11 +146,12 @@ namespace AreaInfoDisplayOnPause
         /// <summary>
         /// Same layout as AreaTracker's live Progression Detail text, minus its "current: ..."
         /// line (there's no current position for a finished run), with BeatenPbText in place of
-        /// the PB, and the run's clear time right under it.
+        /// the PB, and the run's clear time right under it. Headed by the same label the list
+        /// entry shows, so it's clear which record is open.
         /// </summary>
         private static string GetDetailText(ClearedMapHistoryStore.ClearedRecord record)
         {
-            string text = BeatenPbText;
+            string text = GetListLabel(record) + "\n" + BeatenPbText;
             if (record.ClearTime.HasValue)
             {
                 text += "\n" + ClearTimeLabel + FormatClearTime(record.ClearTime.Value);
