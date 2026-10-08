@@ -10,6 +10,7 @@ Jump Kingのmodです。ポーズ画面の「Objective」欄の下に、現在�
 - 挑戦回数はそのプレイ（セーブ）中に各エリアへ初めて入ったときに1になり、その後は前のエリアから後のエリアに登るたびに+1されます。
 - **Personal Best**: そのプレイでこれまでに到達した中で一番進んだ場所を、エリア名とそのエリアの何枚目かまで表示します。
 - **Progression Detail**: 通常表示の代わりに、到達済みの全エリアを最後に訪れたものから順に列挙し、各エリアの挑戦回数とそのエリアに初めて到達した時のプレイ時間を表示します。
+- **Cleared Maps**: マップをクリアすると、その時点の進行記録がクリア日時とともに履歴として残ります（件数の上限はありません）。タイトル画面のModメニューから一覧を開き、クリアごとのProgression Detailを確認できます。
 
 ## 使い方
 
@@ -19,8 +20,9 @@ Jump Kingのmodです。ポーズ画面の「Objective」欄の下に、現在�
 2. **Attempt Counter** - 挑戦回数表示のON/OFF
 3. **Personal Best** - 最高到達地点表示のON/OFF
 4. **Progression Detail** - 通常表示の代わりにエリアごとの詳細記録を表示するON/OFF（ONの間は2・3の設定は意味を持たないためグレーアウトされます）
+5. **Cleared Maps** - クリア済みマップの一覧（`マップ名 クリア日時`、新しい順）。選ぶとそのクリア時点の詳細記録を表示します。**メインメニューのModからのみ**開けます（ゲーム中のModには出ません）
 
-設定・進捗データはmod自身のdllと同じフォルダに、それぞれ`F.AreaInfoDisplayOnPause.Settings.xml`/`F.AreaInfoDisplayOnPause.AreaProgress.xml`として保存されます。進捗データはゲーム本体のセーブ・ロード・削除と同期します。
+設定・進捗データはmod自身のdllと同じフォルダに、それぞれ`F.AreaInfoDisplayOnPause.Settings.xml`/`F.AreaInfoDisplayOnPause.AreaProgress.xml`として保存されます。進捗データはゲーム本体のセーブ・ロード・削除と同期します。クリア履歴は`F.AreaInfoDisplayOnPause.ClearedHistory.xml`として別に保存され、Give Upやニューゲームでは消えません。
 
 ## 動作タイミングと負荷
 
@@ -32,6 +34,8 @@ Jump Kingのmodです。ポーズ画面の「Objective」欄の下に、現在�
 - **ゲーム起動時に1回だけ**（`ModEntry.BeforeLevelLoad`）: 進捗データのXMLファイルをディスクから読み込む
 - **約1秒ごと、ゲーム本体の自動保存と同じタイミング**（`SaveLube.SaveCombinedSaveFile`へのpostfix）: 進捗データをXMLファイルに書き出す。この処理はゲーム本体の専用セーブスレッド（メインスレッドとは別）上で動き、メインスレッドとの排他制御（ロック）はメモリ上のデータを集める間だけに留めており、実際のディスク書き込みはロックを外した後に行うため、メインスレッド（＝ゲームプレイ）を待たせることはない
 - **Restart・Give Up・ニューゲーム開始時**（`SaveLube.DeleteSaves`へのpostfix）: 進捗データのクリアとファイル削除
+- **マップをクリアした瞬間に1回だけ**（`SaveManager.AddTaskOnGameComplete`へのprefix）: その時点の進捗データをクリア履歴ファイルに追記する（読み込み→先頭に追加→書き出し）。エンディング開始時にしか呼ばれないため、プレイ中には一切動かない
+- **タイトル画面のメニューが作られるたびに1回**（`[MainMenuItemSetting]`、`ClearedMapsMenu.Create`）: クリア履歴ファイルを読み込み、一覧・詳細メニューを組み立てる。クリア1回あたり数十行程度のXMLを読むだけで、プレイ中には一切動かない
 - **他mod「More Saves」が導入されている場合のみ、そのManual/Auto Saveのタイミング**（`MoreSavesPatches`）: 進捗データをそのセーブのフォルダにも個別保存・復元する。未導入の場合はこの処理自体が一切走らない
 
 まとめると、フレームレートに影響しうる処理（毎フレーム走るもの）はいずれもゲーム本体が同じ場所で既に行っている処理より軽く、重い処理（ディスクI/O）は低頻度かつ別スレッドで行われるため、プレイ中の負荷は実質無視できるレベル。
@@ -66,4 +70,7 @@ Harmonyを使用していますが、`0Harmony.dll`はこのmodに同梱され�
 | `MenuFactoryPatches.cs` | `MenuFactory.CreatePauseInfo`・`PauseManager.SetPause`へのHarmonyパッチ。「Objective」欄の下に上記テキストを追加し、ポーズを開くたび枠サイズを再計算する |
 | `LevelManagerPatches.cs` | `LevelManager.Update`へのHarmonyパッチ。ポーズ中以外の毎フレーム、進捗（挑戦回数・突破判定・最高到達地点）を更新する |
 | `SaveLubePatches.cs` | `SaveLube`の保存・削除へのHarmonyパッチ。進捗データをゲーム本体のセーブライフサイクルと同期させる |
+| `ClearedMapHistoryStore.cs` | クリア済みマップの履歴（クリアごとの進捗データのコピー・クリア日時・マップ名/エリア名）を保持し、XMLで永続化する。件数の上限は無い |
+| `GameCompletePatches.cs` | `SaveManager.AddTaskOnGameComplete`へのHarmonyパッチ。マップクリア（エンディング開始）時に、進捗データが消される前にクリア履歴へコピーする |
+| `ClearedMapsMenu.cs` | タイトル画面のModメニューに出す「Cleared Maps」ボタン・一覧・詳細画面を組み立てる |
 | `MoreSavesPatches.cs` | 他mod「More Saves」が導入されている場合だけ、そのManual/Auto Saveごとに進捗データを個別保存・復元する（未導入でも動作に影響しない任意の連携） |

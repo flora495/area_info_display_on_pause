@@ -833,3 +833,54 @@ MoreTextOptionsの`PatchSpriteBatch`（`SpriteBatch.DrawString`へのパッチ�
 - `LoadSave`のpostfix側の「Manual配下でなければ何もしない」制限を、「Manual配下**または**Auto配下なら処理する」に緩和した
 
 これにより、Manual・Auto問わず、More Savesの全セーブスロットでこのmodの進捗データが個別に保存・復元されるようになった。
+
+## 機能追加: クリア済みマップの履歴（Cleared Maps）
+
+### 確定した仕様（ユーザー回答済み）
+
+- マップをクリアしたら、その時点の進捗データ（`AreaProgress.xml`と同じ内容）をクリア日時とともに別ファイル`F.AreaInfoDisplayOnPause.ClearedHistory.xml`へコピーして残す
+- クリアごとに1件ずつ残す（同じマップを複数回クリアしてもクリア日時で区別して全部残す）。保持上限は当初「全マップ合計で10件」としたが、のちに**無制限**に変更（下記「追加要望: 件数無制限・ページ送り」）
+- 閲覧はタイトル画面のModメニューからのみ（プレイ中のポーズメニューには出さない）。一覧（`マップ名 yyyy-MM-dd HH:mm`、新しい順）→ 詳細
+- 詳細はProgression Detailと同じ形式。ただし`current:`行は削除し、`pb:`行は`pb: Beaten`という固定表示にする
+- 負荷対策として、新しい処理はマップのクリア時（と、閲覧のためのタイトル画面メニュー構築時）以外には一切動かないこと
+
+### クリアの検知: `SaveManager.AddTaskOnGameComplete`
+
+ゲーム本体を逆コンパイルして確認した。エンディング（`JumpKing.GameManager.MultiEnding.GameEnding`）の`OnNewRun`が`SaveManager.instance.StopSaving()`→`AddTaskOnGameComplete()`を呼ぶ。このタスクはセーブスレッド上で`_onGameCompleted`→`_deleteSaveFile`→`SaveLube.DeleteSaves()`と進み、**クリアした時点でゲーム本体のセーブが削除される**。このmodの`SaveLubePatches.DeleteSavesPostfix`もそれに連動して`AreaProgress.xml`を削除するため、従来はクリアと同時に進捗データが失われていた。
+
+- `AddTaskOnGameComplete`は`GameEnding.OnNewRun`からしか呼ばれない（バニラ・カスタムレベル、3種のBabeすべて共通）。Give Up・ニューゲームは別の`AddTaskDeleteSaveFile`経由なので、ここには来ない
+- `AddTaskOnGameComplete`自体はタスクをキューに積むだけで、実際の削除はその後セーブスレッドで行われる。そのため、ここにprefixを当てればメインスレッド上で確実に削除前のデータを読める（`GameCompletePatches.cs`）
+- `SaveManager`は`public`クラスなので、リフレクション無しで`typeof(SaveManager)`から直接パッチできる
+- 記録処理の例外はすべて握りつぶして`Program.crashLog`に書くだけにし、ゲーム本体のエンディング・セーブ処理を絶対に邪魔しないようにした
+
+### 名前もクリア時点で保存する
+
+`AreaProgress.xml`はエリアを開始画面番号（`start`）でしか持っていないが、タイトル画面ではそのレベルの`Location`定義が読み込まれていないため、番号から名前を引けない（そもそもそのWorkshopレベルの購読が既に解除されている可能性もある）。そのため、クリア時点で`AreaTracker`が持っている`Location`からエリア名を解決し（`GetAreaDisplayName`、マークアップタグ除去込み）、レベル名（`MenuFactory.GetLevelTitle()`と同じ分岐を`LevelKeyResolver.GetCurrentLevelTitle()`として複製）とあわせて保存する。数値データは`AreaProgress.xml`と同じ項目（`start`/`order`/`attempts`/`cleared`/`lapTicks`/`bestScreenIndex`）をそのまま持つ。
+
+### タイトル画面のメニュー
+
+- `[MainMenuItemSetting]`はタイトル画面側のMod設定にだけ列挙され、ポーズ側は`[PauseMenuItemSetting]`の別リストなので、前者にだけ登録すれば「タイトルからのみ」を満たせる
+- `MenuFactory.TryCreateModSetting`は、返された項目が`IBTMenuDecorator`（`TextButton`等）で子が`MenuSelector`なら、`AddMenuToDrawables`で入れ子の`MenuSelector`まで再帰的に描画対象へ登録する。そのため`TextButton("Cleared Maps")`→一覧`MenuSelector`→各`TextButton`→詳細`MenuSelector`という素直な入れ子だけで動く（`ClearedMapsMenu.cs`）
+- タイトル画面のメニューはタイトルに戻るたびに作り直されるため、クリア後にタイトルへ戻れば一覧は自動的に最新になる。履歴ファイルの読み込みもこのタイミングでのみ行う
+- Mod設定ポップアップに渡される`GuiFormat`はタイトル画面の右下寄り（`anchor_bounds.Y = 160`）で、一覧1ページ分やバニラ本編26エリア分の詳細は収まらない。そのため一覧・詳細は`PauseManager.GUI_FORMAT`（`internal`のため値を複製）を画面中央アンカーにした独自のフォーマットで表示する
+- 詳細の複数行テキストは、ポーズ画面用の`AreaInfoTextInfo`を再利用した（表示文字列を外から`Func<string>`で渡せるようにした）。`MeasureString`が幅を少なく見積もる問題への対策（最も幅の広い行へのバッファ付加・中央寄せ）をそのまま使うため
+- 詳細の`pb: Beaten`の直下には、エンディング後の結果画面（`JumpKing.GameManager.StatsScreen`）と同じクリア時間を`clear: `付きで表示する（下記）
+- `MenuSelector`は全項目が`UnSelectable`だと`FixIndex`が無限ループするため、一覧が空の時も詳細画面も、必ず戻るボタン（`Initialize()`が自動で追加）を残している
+
+### 追加要望: クリア時間の記録
+
+エンディング後の結果画面（`StatsScreen.MakeLines`）は、`AchievementManager.WinStats`を`TimeInfo.CreateLabelWithMs(stats, 15)`で文字列化して表示している（15分未満は`MM:SS.mmm`、それ以上は`<language.TIMEINFO_TIME>Xh Ym Zs mmmms`）。
+
+- `WinStats`は`GameLoop`で勝利判定が成立した瞬間の`AchievementManager.OnVictory()`で`GetCurrentStats()`から確定する。その直後に`GameEnding`が走り`AddTaskOnGameComplete`（このmodの記録タイミング）が呼ばれるため、記録時点で`WinStats`は確定済み
+- 逆に`OnVictory()`は同時に`TakeNewSnapshot()`で経過時間の基準点を取り直すため、記録時点で`GetCurrentStats()`（`PlayTimeAccessor.GetCurrentPlayTime`）を読むとほぼ0になってしまう。そのため必ず`WinStats`を読む（`PlayTimeAccessor.GetWinPlayTime`、`AchievementManager`が`internal`なのでリフレクション）
+- 履歴ファイルには`clearTicks`属性（`TimeSpan.Ticks`）として保存。この属性が無い古い記録では`clear:`行を出さない
+- 表示は`CreateLabelWithMs`と同じ分岐・桁埋めを`ClearedMapsMenu.FormatClearTime`で再現する。長い形式の先頭に付く`language.TIMEINFO_TIME`の代わりに、`pb: `行と揃えた`clear: `を付ける
+
+### 追加要望: 件数無制限・ページ送り
+
+保持件数の上限（10件）を撤廃し、無制限にした（`ClearedMapHistoryStore.Append`は先頭に追加して書き出すだけ）。件数が増えると1画面に収まらないため、一覧をページ分けした。
+
+- 参考にしたのは他mod「More Saves」（Workshop ID 3239040787）の`ModelLoadOptions.CreateLoadOptions`。1ページ9件、`Next`は次ページの`MenuSelector`を子に持つ`TextButton`（＝ページが入れ子になる）、`Previous`はそのページ自身への`MenuSelectorBack`（＝戻るだけで前のページに帰れる）という作り。同じ方式を採用し、1ページ8件とした（`ClearedMapsMenu.PageSize`）
+- 複数ページある時だけ、先頭に`Cleared Maps 1/3`のようなページ表示（`TextInfo`、選択不可）を出す
+- `Previous`/`Next`の文言はゲーム本体の`language.PAGINATION_PREVIOUS`/`PAGINATION_NEXT`（本体のWorkshop一覧と同じ）
+- More Savesは`MenuSelectorClosePopup`（「最後から2番目の項目＝Nextが開いている間だけ自分を隠す」）を使っているが、このmodの一覧・詳細はすべて画面中央に出すため、詳細を開いた時も後ろに一覧の枠がはみ出して見えてしまう（10件版にもあった問題）。そのため、どの項目であれ子のメニューが開いている間（`m_last_child_result == Running`）は自分を描画しない`ParentHidingMenuSelector`を作り、一覧の各ページに使った

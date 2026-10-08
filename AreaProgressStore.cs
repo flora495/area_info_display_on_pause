@@ -360,13 +360,14 @@ namespace AreaInfoDisplayOnPause
 
         public readonly struct AreaSummary
         {
-            public AreaSummary(int start, int order, int attemptCount, TimeSpan lapTime, int bestScreenIndex)
+            public AreaSummary(int start, int order, int attemptCount, TimeSpan lapTime, int bestScreenIndex, bool hasFullyCleared)
             {
                 Start = start;
                 Order = order;
                 AttemptCount = attemptCount;
                 LapTime = lapTime;
                 BestScreenIndex = bestScreenIndex;
+                HasFullyCleared = hasFullyCleared;
             }
 
             public int Start { get; }
@@ -376,6 +377,8 @@ namespace AreaInfoDisplayOnPause
 
             /// <summary>Deepest exact-matched screen ever reached within this area.</summary>
             public int BestScreenIndex { get; }
+
+            public bool HasFullyCleared { get; }
         }
 
         /// <summary>
@@ -390,7 +393,7 @@ namespace AreaInfoDisplayOnPause
                 {
                     foreach (KeyValuePair<int, AreaEntry> pair in levelEntry.Areas)
                     {
-                        result.Add(new AreaSummary(pair.Key, pair.Value.Order, pair.Value.AttemptCount, pair.Value.LapTime, pair.Value.BestScreenIndex));
+                        result.Add(new AreaSummary(pair.Key, pair.Value.Order, pair.Value.AttemptCount, pair.Value.LapTime, pair.Value.BestScreenIndex, pair.Value.HasFullyCleared));
                     }
                 }
                 result.Sort((a, b) => a.Order.CompareTo(b.Order));
@@ -445,7 +448,7 @@ namespace AreaInfoDisplayOnPause
                         bestEntry = pair.Value;
                     }
                 }
-                return new AreaSummary(bestStart, bestEntry.Order, bestEntry.AttemptCount, bestEntry.LapTime, bestEntry.BestScreenIndex);
+                return new AreaSummary(bestStart, bestEntry.Order, bestEntry.AttemptCount, bestEntry.LapTime, bestEntry.BestScreenIndex, bestEntry.HasFullyCleared);
             }
         }
 

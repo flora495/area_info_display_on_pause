@@ -81,6 +81,9 @@
 		<Compile Include="PlayerGroundChecker.cs" />
 		<Compile Include="PlayTimeAccessor.cs" />
 		<Compile Include="EndingScreensAccessor.cs" />
+		<Compile Include="ClearedMapHistoryStore.cs" />
+		<Compile Include="ClearedMapsMenu.cs" />
+		<Compile Include="GameCompletePatches.cs" />
 
 		<Compile Include="Properties\AssemblyInfo.cs" />
 	</ItemGroup>

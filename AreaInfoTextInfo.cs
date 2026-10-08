@@ -1,3 +1,4 @@
+using System;
 using JumpKing.PauseMenu.BT;
 using Microsoft.Xna.Framework;
 
@@ -6,6 +7,8 @@ namespace AreaInfoDisplayOnPause
     /// <summary>
     /// Same self-refreshing pattern as the engine's own IStatInfo (JumpKing.PauseMenu.BT.Stats):
     /// recompute the label text right before measuring/drawing it instead of caching it once.
+    /// Defaults to the pause screen's AreaTracker.GetDisplayText; ClearedMapsMenu passes its
+    /// own (fixed) text instead, to reuse the multi-line measuring/centering below as-is.
     /// </summary>
     internal sealed class AreaInfoTextInfo : TextInfo
     {
@@ -15,20 +18,28 @@ namespace AreaInfoDisplayOnPause
         // too narrow and the text overflows past the right edge of its own frame.
         private const string MeasureBuffer = "12345";
 
+        private readonly Func<string> m_getText;
+
         public AreaInfoTextInfo()
-            : base(AreaTracker.GetDisplayText(), Color.White)
+            : this(AreaTracker.GetDisplayText)
         {
+        }
+
+        public AreaInfoTextInfo(Func<string> getText)
+            : base(getText(), Color.White)
+        {
+            m_getText = getText;
         }
 
         public override Point GetSize()
         {
-            base.Text = AddBufferToWidestLine(AreaTracker.GetDisplayText());
+            base.Text = AddBufferToWidestLine(m_getText());
             return base.GetSize();
         }
 
         public override void Draw(int x, int y, bool selected)
         {
-            string text = AreaTracker.GetDisplayText();
+            string text = m_getText();
             base.Text = text;
 
             // The frame was sized to fit the widest line + MeasureBuffer (see GetSize), but only
