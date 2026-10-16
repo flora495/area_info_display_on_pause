@@ -18,6 +18,13 @@ namespace AreaInfoDisplayOnPause
         private static MethodInfo s_addDrawableMethod;
         private static DisplayFrame s_displayFrame;
 
+        /// <summary>
+        /// Tallest text the pause-info box can hold while its frame stays on screen (the frame
+        /// is anchored to the bottom and grows upward). Set once the box is built; no limit
+        /// before that.
+        /// </summary>
+        public static int PauseInfoMaxTextHeight { get; private set; } = int.MaxValue;
+
         public static void Apply(Harmony harmony)
         {
             Type menuFactoryType = AccessTools.TypeByName("JumpKing.PauseMenu.MenuFactory");
@@ -98,6 +105,7 @@ namespace AreaInfoDisplayOnPause
             format.all_padding = format.all_padding / 2 + 1;
             format.element_margin = 0;
             format.anchor = new Vector2(0.5f, 1f);
+            PauseInfoMaxTextHeight = format.anchor_bounds.Height - format.margin.height - format.padding.height;
 
             DisplayFrame displayFrame = new PauseInfoFrame(format);
             displayFrame.AddChild(new AreaInfoTextInfo());

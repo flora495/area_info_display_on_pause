@@ -268,7 +268,9 @@ namespace AreaInfoDisplayOnPause
         {
             if (ShowProgressionDetail)
             {
-                return GetProgressionDetailText();
+                // Unlike the Show Progression Detail popup, the pause-info box can't be split into
+                // pages, so the oldest areas are dropped instead once it would leave the screen.
+                return PagedTextMenu.TruncateToHeight(GetProgressionDetailText(), MenuFactoryPatches.PauseInfoMaxTextHeight);
             }
 
             return AppendPersonalBest(GetCurrentAreaDisplayText());

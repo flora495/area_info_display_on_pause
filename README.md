@@ -19,10 +19,10 @@ Jump Kingのmodです。ポーズ画面の「Objective」欄の下に、現在�
 1. **Show Total** - 総数表示のパターン(ALWAYS/NEVER/AFTER CLEAR)
 2. **Attempt Counter** - 挑戦回数表示のON/OFF
 3. **Personal Best** - 最高到達地点表示のON/OFF
-4. **Show Progression Detail** - エリアごとの詳細記録を画面中央に表示します。**ゲーム中のModからのみ**開けます
-5. **Detail Shortcut** - ポーズ中に押すと、画面下の情報欄を通常表示と詳細記録で切り替えるキーを登録します。選ぶと「Press a key or button to bind...」と表示されるので、登録したいキー（またはパッドのボタン）を押してください（10秒で自動キャンセル）。キーボードとパッドで1つずつ登録でき、ラベルに`KB: キー名 / Pad: ボタン名`の形で表示されます（DirectInputのパッドでは`Button 番号`）。既定は未設定（`-`）で、登録するまでは何も起きません。詳細記録に切り替えても、ポーズを閉じると次回は通常表示に戻ります
+4. **Show Progression Detail** - エリアごとの詳細記録を画面中央に表示します。1画面に収まらない時はページに分かれ、`Next`/`Previous`で移動できます。**ゲーム中のModからのみ**開けます
+5. **Detail Shortcut** - ポーズ中に押すと、画面下の情報欄を通常表示と詳細記録で切り替えるキーを登録します。選ぶと「Press a key or button to bind...」と表示されるので、登録したいキー（またはパッドのボタン）を押してください（10秒で自動キャンセル）。キーボードとパッドで1つずつ登録でき、ラベルに`KB: キー名 / Pad: ボタン名`の形で表示されます（DirectInputのパッドでは`Button 番号`）。既定は未設定（`-`）で、登録するまでは何も起きません。詳細記録に切り替えても、ポーズを閉じると次回は通常表示に戻ります。画面に収まらないほどエリアが多い時は、古いエリアを省略して`... +N more`と表示します（全エリアはShow Progression Detailで見られます）
 6. **Reset to Default** - 1〜3と5の設定を既定値（After Clear・ON・ON・未設定）に戻します。確認なしで即座に戻ります。進捗データとクリア履歴は消えません
-7. **Cleared Maps** - クリア済みマップの一覧（`マップ名 クリア日時`、新しい順）。選ぶとそのクリア時点の詳細記録を表示します。**メインメニューのModからのみ**開けます（ゲーム中のModには出ません）
+7. **Cleared Maps** - クリア済みマップの一覧（`マップ名 クリア日時`、新しい順）。選ぶとそのクリア時点の詳細記録を表示します（1画面に収まらない時はページに分かれます）。**メインメニューのModからのみ**開けます（ゲーム中のModには出ません）
 
 **ショートカットキーの注意**: Detail Shortcutには、ゲーム本体の操作キー（決定・キャンセル・ポーズ・上下など）や、他のmod（例: hide_pause_window）のキーと同じキーも登録できます。同じキーを登録すると、押した時に両方の機能が同時に動きます。重ならないキーを登録することをおすすめします。
 
@@ -36,6 +36,7 @@ Jump Kingのmodです。ポーズ画面の「Objective」欄の下に、現在�
 - **ポーズ中のみ、毎フレーム**（`AreaInfoTextInfo`の`Draw`/`GetSize`、`AreaTracker.GetDisplayText`）: 表示テキストの再計算。ポーズ中は上記の毎フレーム更新が走らないため、両者が同時に動くことはない。
 - **ポーズ中のみ、毎フレーム**（`PauseInfoFrame.MyRun`）: Detail Shortcutが押されたかの判定。未登録の間は配列の長さを見るだけですぐ抜ける。ゲーム本体のポーズ画面の処理の中で呼ばれるため、ポーズしていない時は一切動かない
 - **ポーズを開いた瞬間**（`PauseManager.SetPause`へのpostfix）、**および設定をトグルした瞬間・Detail Shortcutで切り替えた瞬間**: 表示枠のサイズ再計算（`DisplayFrame.Initialize()`の再実行）。テキストの長さに合わせて枠を測り直すだけの軽い処理
+- **ポーズ中に「Show Progression Detail」を開いた瞬間に1回**（`ProgressionDetailMenu`の`DetailHost.OnNewRun`）: 詳細テキストを行単位でページに分け、ページのメニューを組み立て直す。数十行の文字列の長さを測るだけの軽い処理
 - **ゲーム起動時に1回だけ**（`ModEntry.BeforeLevelLoad`）: 進捗データのXMLファイルをディスクから読み込む
 - **約1秒ごと、ゲーム本体の自動保存と同じタイミング**（`SaveLube.SaveCombinedSaveFile`へのpostfix）: 進捗データをXMLファイルに書き出す。この処理はゲーム本体の専用セーブスレッド（メインスレッドとは別）上で動き、メインスレッドとの排他制御（ロック）はメモリ上のデータを集める間だけに留めており、実際のディスク書き込みはロックを外した後に行うため、メインスレッド（＝ゲームプレイ）を待たせることはない
 - **Restart・Give Up・ニューゲーム開始時**（`SaveLube.DeleteSaves`へのpostfix）: 進捗データのクリアとファイル削除
@@ -62,7 +63,8 @@ Harmonyを使用していますが、`0Harmony.dll`はこのmodに同梱され�
 | `ModEntry.cs` | modのエントリーポイント（`[JumpKingMod]`）。Harmonyパッチの適用、レベル開始時のフック、メイン・ポーズ両メニューへの設定項目登録を行う |
 | `Settings.cs` | 総数表示パターン・挑戦回数カウンター・Personal BestのON/OFF・Detail Shortcutのキーを保持する設定データ。XMLでの読み込み/保存と既定値へのリセット |
 | `AttemptCounterToggle.cs` / `PersonalBestToggle.cs` | メイン・ポーズ両メニュー上のON/OFFチェックボックス |
-| `ProgressionDetailMenu.cs` | ポーズメニューの「Show Progression Detail」ボタンと、開くたびに枠を測り直す詳細画面 |
+| `ProgressionDetailMenu.cs` | ポーズメニューの「Show Progression Detail」ボタンと、開くたびにページを組み立て直す詳細画面 |
+| `PagedTextMenu.cs` | 詳細記録（Progression Detail・Cleared Mapsの詳細）を画面に収まる高さのページに分け、`Next`/`Previous`付きのメニューにする |
 | `DetailShortcutMenu.cs` | メイン・ポーズ両メニューの「Detail Shortcut」項目。ゲーム本体の`BindButtonFrame`を使ったキー登録画面を組み立てる |
 | `WaitUntilNoRawInputNode.cs` / `CaptureDetailShortcutNode.cs` | キー登録の流れ。選択に使った決定キーが離されるのを待ってから、次に押された1つのキーをキーボード用/パッド用に分けて保存する |
 | `DetailShortcut.cs` | 接続中の全デバイスを見て、Detail Shortcutが押された瞬間を判定する |

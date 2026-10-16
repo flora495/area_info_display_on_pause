@@ -931,6 +931,27 @@ hide_pause_windowは別のmodなので、このmodにはhide_pause_windowのた�
 - ポーズメニューのMod設定はレベル開始時に1回しか組み立てられないが、詳細は進むほど長くなる。そのため`MenuSelector`を継承し、`OnNewRun`で`base.OnNewRun()`の後に`Initialize(false)`を呼び直して、開くたびに枠を測り直す（戻るボタンはすでに`Children`にあるので`false`）
 - 後ろの設定一覧は隠さず手前に重ねて描く（ユーザー判断）。隠すには、ゲーム本体の`CreateModOptions`が作る親の`MenuSelector`に手を入れる必要があり、`CreateModOptions`へのパッチは他modの設定画面を壊した前例がある（上記「全面的に取り消し」の節）
 
+### 詳細のページ分け（JKRuntime環境で詳細が表示されない不具合の修正）
+**症状**: エリア数が多いと、「Show Progression Detail」を開いても枠だけが出て、詳細の文字が1行も表示されず、右下に`2/2`とだけ出た。
+
+**原因**: 詳細全体を1つの`AreaInfoTextInfo`（1項目）にしていたため、エリアが多いと1項目だけで画面の高さを超えていた。
+- 他mod **JKRuntime**（Workshop 3793086563、v2.2.1で確認）は`MenuSelector.Draw`にパッチを当て、枠が安全領域`(12, 12, 456, 336)`に収まらないメニューを、自前の`NativeMenuViewport.Draw`で描く。枠の高さを336pxに抑え、選択中の項目が見えるように表示の先頭の項目をずらし、右下に`選択中の番号/項目数`を出す
+- 詳細のメニューは「詳細テキスト」「戻るボタン」の2項目で、カーソルは戻るボタン。詳細テキストだけで336pxを超えるので、戻るボタンを表示範囲に入れるために先頭が2項目目までずれ、詳細テキストは一度も描かれない。右下の`2/2`はJKRuntimeの項目番号
+- JKRuntimeが無い環境でも、ゲーム本体の`GuiFormat.CalculateBounds`は高さを画面に合わせて切り詰めないため、枠が中央から上下にはみ出していた
+- Cleared Mapsの詳細画面も同じ作り（1項目の`AreaInfoTextInfo`）だったため、同じ問題があった
+
+**修正**: `PagedTextMenu`で詳細を行単位でページに分ける。1ページの枠の高さは336px以下にする（`CreateCenteredFormat`の余白を半分にした枠を中央に置いた時、JKRuntimeの安全領域に収まる上限。480x360の画面にも収まる）。
+- 行の高さは`MenuFont.MeasureString`、戻るボタンの高さは`gui.BackButton`のスプライトで測り、`CalculateBounds`と同じ足し算で判定する。複数ページになる時は、どのページにもページ表示・Previous・Nextの分の高さを確保して分ける
+- 1ページに収まる時は、ページ表示・Previous・Nextを出さない（見た目は従来と同じ）
+- ページの移動はCleared Mapsの一覧と同じ形（Nextで次のページを重ねて開き、Previous・キャンセルで1段戻る。後ろのページは`ParentHidingMenuSelector`で隠す）
+- Progression Detailは進むほどエリアが増え、ページ数も変わる。`MenuSelector`は組み立てた後に項目を安全に出し入れできない（`DisableMenuItem`は、カーソル位置が古いままだと`FixIndex`で範囲外アクセスになる）ため、開くたびにページを丸ごと作り直す。ゲーム本体が描画対象に登録するのは設定を組み立てた時点の`TextButton`直下の`MenuSelector`だけなので、ボタンの子を`DetailHost`（`IBTnode`＋`IDrawable`）にし、自分で`MenuFactoryPatches.AddDrawable`して、その時のページを描く
+- Cleared Mapsの詳細は内容が変わらないため、組み立て時に1回だけページに分ける（入れ子の`MenuSelector`はゲーム本体が描画対象に登録する）
+
+画面下の情報欄（Detail Shortcutで詳細に切り替えた時）は`DisplayFrame`でJKRuntimeの対象外だが、画面下端を基準に上へ伸びるため、エリアが多いと一番大事な上の行（pb・current・最近のエリア）から画面外に出ていた。メニューではないのでNext/Previousは置けない（ページ送りには新しい操作が要る）ため、ページ分けではなく省略にした（ユーザー判断）。
+- `PagedTextMenu.TruncateToHeight`で、画面に収まらない分を下（古いエリア）から行単位で削り、最後に`... +N more`の行を付ける。全エリアはShow Progression Detailのページ送りで見られる
+- 上限の高さは情報欄の枠の書式から計算する（`MenuFactoryPatches.PauseInfoMaxTextHeight` = 画面の高さ − 上下の余白 − 上下の内側余白）
+- `GetDisplayText`はポーズ中に毎フレーム呼ばれるが、収まっている時は高さを1回測るだけで返す
+
 ### Reset to Default
 選ぶと確認なしで即座に既定値に戻る（ユーザー判断）。`ResetSettingsNode`が、値を戻す → 保存 → 詳細表示を通常表示に戻す → 情報欄の枠を測り直す → `ConsumePadPresses()` の順に行う。枠の測り直しが無いと、Personal BestのOFF→ONなどで行数が変わった情報欄が、ポーズを開き直すまで枠とずれる。
 
@@ -939,3 +960,16 @@ hide_pause_windowは別のmodなので、このmodにはhide_pause_windowのた�
 - チェックボックス: `IToggle.OverrideToggle`
 - Show Total: `IOptions.CurrentOption`を書き換える。setterが`OnOptionChange`を呼ぶため、`OnOptionChange`では設定値と同じなら保存しない（二重の書き込みを避ける）
 - Detail Shortcut: キーの配列は登録・リセットのたびに必ず新しい配列を入れる約束にしてあり、参照が変わった時だけラベルを作り直す
+
+## 事象メモ: Give Up してもゲームのセーブが残り、このmodの進捗ファイルだけ消える（2026-10-16、環境要因・mod側は未対応）
+**症状**: ポーズメニューからGive Upした後、起動し直すと「続きから」でゲームを再開できた（本来はセーブが消える）。一方、このmodの進捗ファイル（`F.AreaInfoDisplayOnPause.AreaProgress.xml`）は消えていたため、ゲームは続きからなのに進捗だけリセットされた状態になった。
+
+**原因**: 他mod MoreSaves（Workshop 3239040787）のオートセーブ用フォルダ（`3239040787\auto`・`manual`以下）に、フォルダの読み取り専用属性が付いていた。
+- 付いていたのは2026-06-27 17:47ごろまでに作られたフォルダだけで、それ以降に作られたフォルダには付いていない。MoreSaves・他modのコードに属性を変える処理は無く、何らかの操作で一括で付いたと思われる（何をしたかは不明）
+- Give Upで`SaveLube.DeleteSaves`が呼ばれると、ゲーム本体はセーブをメモリ上で初期化し、このmodのpostfixが進捗ファイルを削除した後、MoreSavesのpostfix（`DeleteAutoSave`）が読み取り専用のフォルダを`Directory.Delete`できず`IOException`（アクセスが拒否されました）を投げる
+- 例外はセーブスレッドで捕まらずにプロセスが終了するため、終了時の`SaveManager.Stop()`（初期化済みのセーブをディスクに書く処理）が走らず、ディスク上の`combined.sav`が古いまま残る
+- JKRuntimeは無関係（同じ例外は導入前の2026-06-28から`crashlog.log`に出ていた）
+
+**確認と解決**: MoreSavesを外すとGive Upが正常に動くことを確認。`attrib -R "...\3239040787\auto\*" /S /D`（`manual`も同様、`auto`・`manual`自身にも`attrib -R`）で読み取り専用を外して解決した。`\*`を付けずに`attrib -R "...\auto" /S /D`とすると中身に適用されないので注意。
+
+**このmod側の今後の検討**: 進捗ファイルを`DeleteSaves`の時点で消すのをやめ、レベル開始時（`OnLevelStart`）にゲームのセーブが新規（`SaveLube.PlayerPosition.time_stamp == 0`）なら消す方式にすれば、他modが原因で`DeleteSaves`の途中で落ちても、ゲームのセーブと進捗がずれなくなる。`SaveManager.IsNewGame`は位置も比べるため、レベル開始前にプレイヤーを移動するNew Babe+では新規と判定されず使えない。未実装。

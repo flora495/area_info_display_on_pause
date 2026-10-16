@@ -113,7 +113,7 @@ namespace AreaInfoDisplayOnPause
         [PauseMenuItemSetting]
         public static TextButton PauseProgressionDetailSetting(object factory, GuiFormat format)
         {
-            return ProgressionDetailMenu.Create();
+            return ProgressionDetailMenu.Create(factory);
         }
 
         [PauseMenuItemSetting]

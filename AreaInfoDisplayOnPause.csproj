@@ -67,6 +67,7 @@
 		<Compile Include="AttemptCounterToggle.cs" />
 		<Compile Include="PersonalBestToggle.cs" />
 		<Compile Include="ProgressionDetailMenu.cs" />
+		<Compile Include="PagedTextMenu.cs" />
 		<Compile Include="DetailShortcut.cs" />
 		<Compile Include="DetailShortcutMenu.cs" />
 		<Compile Include="CaptureDetailShortcutNode.cs" />
