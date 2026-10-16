@@ -64,7 +64,7 @@ namespace AreaInfoDisplayOnPause
         // Same values as the engine's own (internal) PauseManager.GUI_FORMAT, but centered on
         // screen: the mod settings popup these open from sits low and to the right on the title
         // screen, which leaves too little room for a full list page or area breakdown.
-        private static GuiFormat CreateCenteredFormat()
+        internal static GuiFormat CreateCenteredFormat()
         {
             return new GuiFormat
             {

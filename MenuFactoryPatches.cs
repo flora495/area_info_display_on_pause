@@ -37,19 +37,42 @@ namespace AreaInfoDisplayOnPause
                 postfix: new HarmonyMethod(typeof(MenuFactoryPatches), nameof(SetPausePostfix)));
         }
 
+        /// <summary>
+        /// Every pause starts on the normal display, with whatever's held at that moment (e.g.
+        /// the pause button itself) not yet counting as a Detail Shortcut press. Done on open
+        /// rather than on close so it sits with the re-measure and doesn't depend on which way
+        /// pause was closed.
+        /// </summary>
         private static void SetPausePostfix(bool p_pause)
         {
             if (p_pause)
             {
+                AreaTracker.ShowProgressionDetail = false;
+                DetailShortcut.SuppressCurrentPress();
                 s_displayFrame?.Initialize();
             }
         }
 
         /// <summary>
+        /// MenuFactory.AddDrawable, for popups the engine doesn't register for drawing on its own
+        /// (it only does that for a TextButton's direct MenuSelector child). Resolved from the
+        /// factory itself when needed, since the title screen's mod settings can be built before
+        /// Apply ever runs.
+        /// </summary>
+        public static void AddDrawable(object factory, object drawable)
+        {
+            if (s_addDrawableMethod == null)
+            {
+                s_addDrawableMethod = AccessTools.Method(factory.GetType(), "AddDrawable");
+            }
+            s_addDrawableMethod.Invoke(factory, new object[] { drawable });
+        }
+
+        /// <summary>
         /// Re-measures the pause-info frame's bounds. SetPausePostfix already covers the
         /// pause-open case; this is for changes that happen mid-pause-session, like toggling
-        /// AreaHistoryToggle, which swaps the displayed text's line count/length without a
-        /// pause-open event to hang a refresh off of.
+        /// Personal Best or Reset to Default, which change the displayed text's line
+        /// count/length without a pause-open event to hang a refresh off of.
         /// </summary>
         public static void RefreshDisplayFrame()
         {
@@ -76,11 +99,11 @@ namespace AreaInfoDisplayOnPause
             format.element_margin = 0;
             format.anchor = new Vector2(0.5f, 1f);
 
-            DisplayFrame displayFrame = new DisplayFrame(format, BehaviorTree.BTresult.Running);
+            DisplayFrame displayFrame = new PauseInfoFrame(format);
             displayFrame.AddChild(new AreaInfoTextInfo());
             displayFrame.Initialize();
             s_displayFrame = displayFrame;
-            s_addDrawableMethod.Invoke(__instance, new object[] { displayFrame });
+            AddDrawable(__instance, displayFrame);
             __result = displayFrame;
             return false;
         }
