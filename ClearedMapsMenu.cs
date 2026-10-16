@@ -9,7 +9,7 @@ using Microsoft.Xna.Framework;
 namespace AreaInfoDisplayOnPause
 {
     /// <summary>
-    /// The title-screen-only "Cleared Maps" button (registered via [MainMenuItemSetting], which
+    /// The title-screen-only "Beaten Maps" button (registered via [MainMenuItemSetting], which
     /// the pause menu's own mod settings never list): a list of ClearedMapHistoryStore's records,
     /// each opening a Progression-Detail-style breakdown of that clear.
     ///
@@ -19,8 +19,8 @@ namespace AreaInfoDisplayOnPause
     /// </summary>
     internal static class ClearedMapsMenu
     {
-        private const string ButtonText = "Cleared Maps";
-        private const string NoClearsText = "No cleared maps yet";
+        private const string ButtonText = "Beaten Maps";
+        private const string NoClearsText = "No beaten maps yet";
 
         /// <summary>
         /// Shown instead of the live display's "pb: ..." line: the map was beaten, so pointing at
@@ -28,10 +28,10 @@ namespace AreaInfoDisplayOnPause
         /// </summary>
         private const string BeatenPbText = "pb: Beaten";
 
-        private const string ClearTimeLabel = "clear: ";
+        private const string ClearTimeLabel = "time: ";
 
         /// <summary>Heads each page of a record's detail once it needs more than one.</summary>
-        private const string DetailTitle = "Cleared Map";
+        private const string DetailTitle = "Beaten Map";
 
         /// <summary>Longer level names are cut short so the list frame stays within the screen.</summary>
         private const int MaxLevelNameLength = 24;

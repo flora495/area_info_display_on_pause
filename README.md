@@ -10,7 +10,7 @@ Jump Kingのmodです。ポーズ画面の「Objective」欄の下に、現在�
 - 挑戦回数はそのプレイ（セーブ）中に各エリアへ初めて入ったときに1になり、その後は前のエリアから後のエリアに登るたびに+1されます。
 - **Personal Best**: そのプレイでこれまでに到達した中で一番進んだ場所を、エリア名とそのエリアの何枚目かまで表示します。
 - **Progression Detail**: 到達済みの全エリアを最後に訪れたものから順に列挙し、各エリアの挑戦回数とそのエリアに初めて到達した時のプレイ時間を表示します。ポーズ中に、Modの設定画面の「Show Progression Detail」か、自分で登録したショートカットキーで表示できます。
-- **Cleared Maps**: マップをクリアすると、その時点の進行記録がクリア日時とともに履歴として残ります（件数の上限はありません）。タイトル画面のModメニューから一覧を開き、クリアごとのProgression Detailを確認できます。
+- **Beaten Maps**: マップをクリアすると、その時点の進行記録がクリア日時とともに履歴として残ります（件数の上限はありません）。タイトル画面のModメニューから一覧を開き、クリアごとのProgression Detailを確認できます。
 
 ## 使い方
 
@@ -22,7 +22,7 @@ Jump Kingのmodです。ポーズ画面の「Objective」欄の下に、現在�
 4. **Show Progression Detail** - エリアごとの詳細記録を画面中央に表示します。1画面に収まらない時はページに分かれ、`Next`/`Previous`で移動できます。**ゲーム中のModからのみ**開けます
 5. **Detail Shortcut** - ポーズ中に押すと、画面下の情報欄を通常表示と詳細記録で切り替えるキーを登録します。選ぶと「Press a key or button to bind...」と表示されるので、登録したいキー（またはパッドのボタン）を押してください（10秒で自動キャンセル）。キーボードとパッドで1つずつ登録でき、ラベルに`KB: キー名 / Pad: ボタン名`の形で表示されます（DirectInputのパッドでは`Button 番号`）。既定は未設定（`-`）で、登録するまでは何も起きません。詳細記録に切り替えても、ポーズを閉じると次回は通常表示に戻ります。画面に収まらないほどエリアが多い時は、古いエリアを省略して`... +N more`と表示します（全エリアはShow Progression Detailで見られます）
 6. **Reset to Default** - 1〜3と5の設定を既定値（After Clear・ON・ON・未設定）に戻します。確認なしで即座に戻ります。進捗データとクリア履歴は消えません
-7. **Cleared Maps** - クリア済みマップの一覧（`マップ名 クリア日時`、新しい順）。選ぶとそのクリア時点の詳細記録を表示します（1画面に収まらない時はページに分かれます）。**メインメニューのModからのみ**開けます（ゲーム中のModには出ません）
+7. **Beaten Maps** - クリア済みマップの一覧（`マップ名 クリア日時`、新しい順）。選ぶとそのクリア時点の詳細記録を表示します（1画面に収まらない時はページに分かれます）。**メインメニューのModからのみ**開けます（ゲーム中のModには出ません）
 
 **ショートカットキーの注意**: Detail Shortcutには、ゲーム本体の操作キー（決定・キャンセル・ポーズ・上下など）や、他のmod（例: hide_pause_window）のキーと同じキーも登録できます。同じキーを登録すると、押した時に両方の機能が同時に動きます。重ならないキーを登録することをおすすめします。
 
@@ -64,7 +64,7 @@ Harmonyを使用していますが、`0Harmony.dll`はこのmodに同梱され�
 | `Settings.cs` | 総数表示パターン・挑戦回数カウンター・Personal BestのON/OFF・Detail Shortcutのキーを保持する設定データ。XMLでの読み込み/保存と既定値へのリセット |
 | `AttemptCounterToggle.cs` / `PersonalBestToggle.cs` | メイン・ポーズ両メニュー上のON/OFFチェックボックス |
 | `ProgressionDetailMenu.cs` | ポーズメニューの「Show Progression Detail」ボタンと、開くたびにページを組み立て直す詳細画面 |
-| `PagedTextMenu.cs` | 詳細記録（Progression Detail・Cleared Mapsの詳細）を画面に収まる高さのページに分け、`Next`/`Previous`付きのメニューにする |
+| `PagedTextMenu.cs` | 詳細記録（Progression Detail・Beaten Mapsの詳細）を画面に収まる高さのページに分け、`Next`/`Previous`付きのメニューにする |
 | `DetailShortcutMenu.cs` | メイン・ポーズ両メニューの「Detail Shortcut」項目。ゲーム本体の`BindButtonFrame`を使ったキー登録画面を組み立てる |
 | `WaitUntilNoRawInputNode.cs` / `CaptureDetailShortcutNode.cs` | キー登録の流れ。選択に使った決定キーが離されるのを待ってから、次に押された1つのキーをキーボード用/パッド用に分けて保存する |
 | `DetailShortcut.cs` | 接続中の全デバイスを見て、Detail Shortcutが押された瞬間を判定する |
@@ -85,5 +85,5 @@ Harmonyを使用していますが、`0Harmony.dll`はこのmodに同梱され�
 | `SaveLubePatches.cs` | `SaveLube`の保存・削除へのHarmonyパッチ。進捗データをゲーム本体のセーブライフサイクルと同期させる |
 | `ClearedMapHistoryStore.cs` | クリア済みマップの履歴（クリアごとの進捗データのコピー・クリア日時・マップ名/エリア名）を保持し、XMLで永続化する。件数の上限は無い |
 | `GameCompletePatches.cs` | `SaveManager.AddTaskOnGameComplete`へのHarmonyパッチ。マップクリア（エンディング開始）時に、進捗データが消される前にクリア履歴へコピーする |
-| `ClearedMapsMenu.cs` | タイトル画面のModメニューに出す「Cleared Maps」ボタン・一覧・詳細画面を組み立てる |
+| `ClearedMapsMenu.cs` | タイトル画面のModメニューに出す「Beaten Maps」ボタン・一覧・詳細画面を組み立てる |
 | `MoreSavesPatches.cs` | 他mod「More Saves」が導入されている場合だけ、そのManual/Auto Saveごとに進捗データを個別保存・復元する（未導入でも動作に影響しない任意の連携） |
