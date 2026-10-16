@@ -66,7 +66,14 @@
 		<Compile Include="Settings.cs" />
 		<Compile Include="AttemptCounterToggle.cs" />
 		<Compile Include="PersonalBestToggle.cs" />
-		<Compile Include="ProgressionDetailToggle.cs" />
+		<Compile Include="ProgressionDetailMenu.cs" />
+		<Compile Include="PagedTextMenu.cs" />
+		<Compile Include="DetailShortcut.cs" />
+		<Compile Include="DetailShortcutMenu.cs" />
+		<Compile Include="CaptureDetailShortcutNode.cs" />
+		<Compile Include="WaitUntilNoRawInputNode.cs" />
+		<Compile Include="PauseInfoFrame.cs" />
+		<Compile Include="ResetSettingsNode.cs" />
 		<Compile Include="TotalDisplayModeOption.cs" />
 		<Compile Include="LocationSettingsAccessor.cs" />
 		<Compile Include="LocationResolver.cs" />

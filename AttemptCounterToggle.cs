@@ -9,10 +9,14 @@ namespace AreaInfoDisplayOnPause
         {
         }
 
-        protected override bool CanChange()
+        public override void Draw(int x, int y, bool selected)
         {
-            // Has no effect while Progression Detail is showing its own attempt count/PB line.
-            return !AreaTracker.ShowProgressionDetail;
+            // Picks up Reset to Default, the only way the setting changes without this toggle.
+            if (base.toggle != ModEntry.Settings.AttemptCounterEnabled)
+            {
+                OverrideToggle(ModEntry.Settings.AttemptCounterEnabled);
+            }
+            base.Draw(x, y, selected);
         }
 
         protected override string GetName()

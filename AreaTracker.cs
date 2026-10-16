@@ -58,8 +58,9 @@ namespace AreaInfoDisplayOnPause
         private static int? s_lastScreenIndex1;
 
         /// <summary>
-        /// Toggled by ProgressionDetailToggle in the pause menu; swaps GetDisplayText over to the
-        /// visited-areas breakdown instead of the current area's own info.
+        /// Toggled by the Detail Shortcut while paused (see PauseInfoFrame); swaps GetDisplayText
+        /// over to the visited-areas breakdown instead of the current area's own info. Lasts one
+        /// pause only - MenuFactoryPatches.SetPausePostfix clears it each time pause opens.
         /// </summary>
         public static bool ShowProgressionDetail { get; set; }
 
@@ -267,7 +268,9 @@ namespace AreaInfoDisplayOnPause
         {
             if (ShowProgressionDetail)
             {
-                return GetProgressionDetailText();
+                // Unlike the Show Progression Detail popup, the pause-info box can't be split into
+                // pages, so the oldest areas are dropped instead once it would leave the screen.
+                return PagedTextMenu.TruncateToHeight(GetProgressionDetailText(), MenuFactoryPatches.PauseInfoMaxTextHeight);
             }
 
             return AppendPersonalBest(GetCurrentAreaDisplayText());
@@ -419,7 +422,7 @@ namespace AreaInfoDisplayOnPause
         /// with its attempt count and the play time it was first reached at. Areas are listed
         /// most-recently-discovered first (the first area at the bottom).
         /// </summary>
-        private static string GetProgressionDetailText()
+        internal static string GetProgressionDetailText()
         {
             List<AreaProgressStore.AreaSummary> areas = AreaProgressStore.GetVisitedAreas(s_currentLevelKey);
             if (areas.Count == 0)

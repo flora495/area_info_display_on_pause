@@ -9,7 +9,7 @@ using Microsoft.Xna.Framework;
 namespace AreaInfoDisplayOnPause
 {
     /// <summary>
-    /// The title-screen-only "Cleared Maps" button (registered via [MainMenuItemSetting], which
+    /// The title-screen-only "Beaten Maps" button (registered via [MainMenuItemSetting], which
     /// the pause menu's own mod settings never list): a list of ClearedMapHistoryStore's records,
     /// each opening a Progression-Detail-style breakdown of that clear.
     ///
@@ -19,8 +19,8 @@ namespace AreaInfoDisplayOnPause
     /// </summary>
     internal static class ClearedMapsMenu
     {
-        private const string ButtonText = "Cleared Maps";
-        private const string NoClearsText = "No cleared maps yet";
+        private const string ButtonText = "Beaten Maps";
+        private const string NoClearsText = "No beaten maps yet";
 
         /// <summary>
         /// Shown instead of the live display's "pb: ..." line: the map was beaten, so pointing at
@@ -28,7 +28,10 @@ namespace AreaInfoDisplayOnPause
         /// </summary>
         private const string BeatenPbText = "pb: Beaten";
 
-        private const string ClearTimeLabel = "clear: ";
+        private const string ClearTimeLabel = "time: ";
+
+        /// <summary>Heads each page of a record's detail once it needs more than one.</summary>
+        private const string DetailTitle = "Beaten Map";
 
         /// <summary>Longer level names are cut short so the list frame stays within the screen.</summary>
         private const int MaxLevelNameLength = 24;
@@ -42,10 +45,11 @@ namespace AreaInfoDisplayOnPause
 
         /// <summary>
         /// A MenuSelector that stops drawing itself while one of its own items has a submenu open
-        /// (the next list page, or a record's detail). Every screen here is centered, so without
+        /// (the next list page, a record's detail, or the next detail page - PagedTextMenu uses it
+        /// too). Every screen here is centered, so without
         /// this the page underneath would show around the edges of whatever opened on top of it.
         /// </summary>
-        private sealed class ParentHidingMenuSelector : MenuSelector
+        internal sealed class ParentHidingMenuSelector : MenuSelector
         {
             public ParentHidingMenuSelector(GuiFormat format)
                 : base(format)
@@ -64,7 +68,7 @@ namespace AreaInfoDisplayOnPause
         // Same values as the engine's own (internal) PauseManager.GUI_FORMAT, but centered on
         // screen: the mod settings popup these open from sits low and to the right on the title
         // screen, which leaves too little room for a full list page or area breakdown.
-        private static GuiFormat CreateCenteredFormat()
+        internal static GuiFormat CreateCenteredFormat()
         {
             return new GuiFormat
             {
@@ -136,11 +140,9 @@ namespace AreaInfoDisplayOnPause
             detailFormat.all_padding = detailFormat.all_padding / 2 + 1;
             detailFormat.element_margin = 2;
 
-            string text = GetDetailText(record);
-            MenuSelector detail = new MenuSelector(detailFormat);
-            detail.AddChild(new AreaInfoTextInfo(() => text));
-            detail.Initialize();
-            return detail;
+            // Split into pages the same way as the live breakdown, so a map with many areas
+            // stays on screen (see PagedTextMenu).
+            return PagedTextMenu.Create(detailFormat, DetailTitle, GetDetailText(record));
         }
 
         /// <summary>

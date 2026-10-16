@@ -884,3 +884,92 @@ MoreTextOptionsの`PatchSpriteBatch`（`SpriteBatch.DrawString`へのパッチ�
 - 複数ページある時だけ、先頭に`Cleared Maps 1/3`のようなページ表示（`TextInfo`、選択不可）を出す
 - `Previous`/`Next`の文言はゲーム本体の`language.PAGINATION_PREVIOUS`/`PAGINATION_NEXT`（本体のWorkshop一覧と同じ）
 - More Savesは`MenuSelectorClosePopup`（「最後から2番目の項目＝Nextが開いている間だけ自分を隠す」）を使っているが、このmodの一覧・詳細はすべて画面中央に出すため、詳細を開いた時も後ろに一覧の枠がはみ出して見えてしまう（10件版にもあった問題）。そのため、どの項目であれ子のメニューが開いている間（`m_last_child_result == Running`）は自分を描画しない`ParentHidingMenuSelector`を作り、一覧の各ページに使った
+
+## 仕様変更: Progression Detail のオンデマンド表示化
+
+ポーズメニューの「Progression Detail」チェックボックス（常時表示のON/OFF）を廃止し、次の2通りでだけ詳細を出すようにした。あわせて「Reset to Default」ボタンを追加した。
+
+- ポーズメニューのMod設定の「Show Progression Detail」ボタン（画面中央に詳細を出す。タイトル画面には出さない）
+- ポーズ中に、自分で登録したショートカットキー（Detail Shortcut）を押す（画面下の情報欄を通常表示/詳細表示で切り替える）
+
+### 既存ユーザーへの影響
+- `ShowProgressionDetail`はもともと設定ファイルに保存されておらず、レベルの読み込み直しでOFFに戻っていたため、データ移行は不要。更新するとポーズメニューから「Progression Detail」の項目が消えるだけ
+- Detail Shortcutは既定で未設定。更新しただけでは何も起きず、本人が登録して初めて有効になる
+- 旧版の設定ファイルにはDetail Shortcutの要素が無いが、その場合は未設定として読む。新版が保存したファイルを旧版で読んでも、旧版は知らない要素を無視するだけ
+- 詳細表示中のAttempt Counter / Personal Bestのグレーアウト（`CanChange`）は廃止した
+
+### 詳細表示の状態はポーズ1回分だけ
+`AreaTracker.ShowProgressionDetail`は、ポーズを**開いた時**に`MenuFactoryPatches.SetPausePostfix`でfalseに戻す。閉じた時ではなく開いた時にしたのは、その分岐ですでに枠の測り直し（`Initialize()`）をしており、「通常表示に戻す」「枠を測り直す」「その時押されているキーを押されたままとみなす」を1か所にまとめられ、閉じる経路（Resume・ポーズキー・Give Up等）を気にしなくて済むため。
+
+### キー判定の置き場所（Harmonyパッチを使わない）
+`CreatePauseInfoPrefix`で作る情報欄の枠を、`DisplayFrame`を継承した`PauseInfoFrame`に差し替え、その`MyRun`で判定している。逆コンパイルで以下を確認済み。
+
+- `PauseManager.MakeBT`のツリーの根は`BTselector(BTinvertor(IsPausedNode), ...)`で、ポーズしていない時はその先を一切実行しない → ゲーム中の処理増加はゼロ
+- 情報欄の枠は`BTsimultaneous`の中の`StaticNode`の子。`StaticNode.MyRun`は結果に関係なく必ず子を実行し、`BTsimultaneous`は stats → 情報欄 → `m_main_menu` の順に毎フレーム全員を実行する → サブメニュー（Options等）を開いている間も判定は動き、メインメニューの入力処理より先に走る
+- ポーズ画面の処理の中にあるため、hide_pause_windowが将来`PauseUpdate`自体を止めるようにすれば、判定も自動的に止まる
+
+判定（`DetailShortcut`）は hide_pause_window の`IsToggleKeyPressed`と同じく接続中の全デバイスを見る（1台のパッドがXInput/DirectInputの2台に見える環境への対策）。ただしパッドのキーは、登録した時と同じ種類（XInput / DirectInput）のパッドとだけ照合する。XInput（`XboxPad`）のボタン番号はXNAの`Buttons`のビット値（十字キー上下左右=1/2/4/8、Start=16、Back=32…）、DirectInput（`LegacyPad`）は1から数えた連番で、番号が重なるため。種類を見ないと、DirectInput側でボタン1を登録した時にXInput側の十字キー上でも切り替わってしまう。種類は登録時に`GetSaveIdentifier()`が`xbox_pad_jump_king`で始まるかで判別し、`Settings.PadDetailShortcutIsXInput`に保存する（hide_pause_windowの`IsToggleKeyPressed`は種類を見ていないので、同じ問題が残っている）。ただし未登録の間はデバイスをたどる前に配列の長さだけ見て抜ける。押した瞬間だけを拾い、ポーズを開いた時とキー登録の直後は「押されたまま」とみなす（hide_pause_windowの`SuppressCurrentToggleEdge`と同じ考え方）。
+
+### キー登録UI（hide_pause_window から流用）
+`DetailShortcutMenu`・`CaptureDetailShortcutNode`・`WaitUntilNoRawInputNode`は hide_pause_window の`HideWindowKeyMenu`・`CaptureToggleKeyNode`・`WaitUntilNoRawInputNode`の流用。`TextButton`の子は`BindButtonFrame`自身にする（キャプチャ処理を直接渡すと画面が固まる、hide_pause_windowの実機で発覚済み）。流用元との違い:
+
+- 設定の読み込みは`int.TryParse`にし、読めない値は無視して未設定扱いにする（流用元の`int.Parse`は壊れた値で例外になる）
+- `BindButtonFrame`の描画登録は`MenuFactoryPatches.AddDrawable`経由。タイトル画面のMod設定は`BeforeLevelLoad`（＝`MenuFactoryPatches.Apply`）より先に組み立てられることがあるため、`AddDrawable`のメソッドが未取得ならその場で`factory.GetType()`から取得する
+- パッドのキーの種類（XInput / DirectInput）も保存し、判定とラベルに使う（上記）。XInputのボタンはラベルに`Buttons`の名前（`A`・`DPadUp`など）で出す。DirectInputは`Button 番号`のまま
+- ラベルの更新はキャプチャ側では行わず、ボタン（`DetailShortcutButton`）自身が`Draw`の中で`Settings`の配列と参照比較して作り直す。リセット時の同期と同じ仕組みで済む
+- ラベルが長くなると（例: `Detail Shortcut (KB: LeftShift / Pad: Button 10)`）設定一覧の枠からはみ出すが、対応しない（ユーザー判断。Show Totalのはみ出しと同じく、枠はメニューを組み立てた時にしか測られないため）
+
+### キーの重なり（対処しない）
+ゲーム本体の操作キーや他modのキーと同じキーを登録しても、登録時に弾かず、押した時の確認もしない（ユーザー判断）。参考までに、Phoenixx19.SaveStates（Workshop 3161216998）も登録時・押した時ともにゲームのキー設定との照合をしておらず、重なりは利用者任せにしている。上記の実行順から、重なった時は詳細の切り替えが先に起き、同じフレームでメニュー側の動作（決定・ポーズ解除など）も起きる見込み。実際の挙動はTEST_CASES.mdの19章で確認し、ここに追記する。
+
+hide_pause_windowは別のmodなので、このmodにはhide_pause_windowのための実装を入れない。参考: 今のhide_pause_windowは非表示中に`ConsumePadPresses()`でメニュー入力を消しているが、このmodの判定は生のボタン状態（`GetPressedButtons`）を読むため、非表示中もDetail Shortcutは効き、見えないまま詳細表示が切り替わる。
+
+### Show Progression Detail ボタン
+`TextButton`の子に詳細用の`MenuSelector`を置くだけで、`MenuFactory.TryCreateModSetting`が描画対象に登録してくれる（`ClearedMapsMenu`と同じ）。
+
+- 中身の`AreaInfoTextInfo`は選択できない項目（`UnSelectable`）。選択できる項目が1つも無いと、開いた時の`MenuSelector.Reset()`→`FixIndex`が範囲外アクセスで落ちる（ループの判定が`p_index > Length`になっているため）。そのため戻るボタン付きの`Initialize()`で組み立てる
+- ポーズメニューのMod設定はレベル開始時に1回しか組み立てられないが、詳細は進むほど長くなる。そのため`MenuSelector`を継承し、`OnNewRun`で`base.OnNewRun()`の後に`Initialize(false)`を呼び直して、開くたびに枠を測り直す（戻るボタンはすでに`Children`にあるので`false`）
+- 後ろの設定一覧は隠さず手前に重ねて描く（ユーザー判断）。隠すには、ゲーム本体の`CreateModOptions`が作る親の`MenuSelector`に手を入れる必要があり、`CreateModOptions`へのパッチは他modの設定画面を壊した前例がある（上記「全面的に取り消し」の節）
+
+### 詳細のページ分け（JKRuntime環境で詳細が表示されない不具合の修正）
+**症状**: エリア数が多いと、「Show Progression Detail」を開いても枠だけが出て、詳細の文字が1行も表示されず、右下に`2/2`とだけ出た。
+
+**原因**: 詳細全体を1つの`AreaInfoTextInfo`（1項目）にしていたため、エリアが多いと1項目だけで画面の高さを超えていた。
+- 他mod **JKRuntime**（Workshop 3793086563、v2.2.1で確認）は`MenuSelector.Draw`にパッチを当て、枠が安全領域`(12, 12, 456, 336)`に収まらないメニューを、自前の`NativeMenuViewport.Draw`で描く。枠の高さを336pxに抑え、選択中の項目が見えるように表示の先頭の項目をずらし、右下に`選択中の番号/項目数`を出す
+- 詳細のメニューは「詳細テキスト」「戻るボタン」の2項目で、カーソルは戻るボタン。詳細テキストだけで336pxを超えるので、戻るボタンを表示範囲に入れるために先頭が2項目目までずれ、詳細テキストは一度も描かれない。右下の`2/2`はJKRuntimeの項目番号
+- JKRuntimeが無い環境でも、ゲーム本体の`GuiFormat.CalculateBounds`は高さを画面に合わせて切り詰めないため、枠が中央から上下にはみ出していた
+- Cleared Mapsの詳細画面も同じ作り（1項目の`AreaInfoTextInfo`）だったため、同じ問題があった
+
+**修正**: `PagedTextMenu`で詳細を行単位でページに分ける。1ページの枠の高さは336px以下にする（`CreateCenteredFormat`の余白を半分にした枠を中央に置いた時、JKRuntimeの安全領域に収まる上限。480x360の画面にも収まる）。
+- 行の高さは`MenuFont.MeasureString`、戻るボタンの高さは`gui.BackButton`のスプライトで測り、`CalculateBounds`と同じ足し算で判定する。複数ページになる時は、どのページにもページ表示・Previous・Nextの分の高さを確保して分ける
+- 1ページに収まる時は、ページ表示・Previous・Nextを出さない（見た目は従来と同じ）
+- ページの移動はCleared Mapsの一覧と同じ形（Nextで次のページを重ねて開き、Previous・キャンセルで1段戻る。後ろのページは`ParentHidingMenuSelector`で隠す）
+- Progression Detailは進むほどエリアが増え、ページ数も変わる。`MenuSelector`は組み立てた後に項目を安全に出し入れできない（`DisableMenuItem`は、カーソル位置が古いままだと`FixIndex`で範囲外アクセスになる）ため、開くたびにページを丸ごと作り直す。ゲーム本体が描画対象に登録するのは設定を組み立てた時点の`TextButton`直下の`MenuSelector`だけなので、ボタンの子を`DetailHost`（`IBTnode`＋`IDrawable`）にし、自分で`MenuFactoryPatches.AddDrawable`して、その時のページを描く
+- Cleared Mapsの詳細は内容が変わらないため、組み立て時に1回だけページに分ける（入れ子の`MenuSelector`はゲーム本体が描画対象に登録する）
+
+画面下の情報欄（Detail Shortcutで詳細に切り替えた時）は`DisplayFrame`でJKRuntimeの対象外だが、画面下端を基準に上へ伸びるため、エリアが多いと一番大事な上の行（pb・current・最近のエリア）から画面外に出ていた。メニューではないのでNext/Previousは置けない（ページ送りには新しい操作が要る）ため、ページ分けではなく省略にした（ユーザー判断）。
+- `PagedTextMenu.TruncateToHeight`で、画面に収まらない分を下（古いエリア）から行単位で削り、最後に`... +N more`の行を付ける。全エリアはShow Progression Detailのページ送りで見られる
+- 上限の高さは情報欄の枠の書式から計算する（`MenuFactoryPatches.PauseInfoMaxTextHeight` = 画面の高さ − 上下の余白 − 上下の内側余白）
+- `GetDisplayText`はポーズ中に毎フレーム呼ばれるが、収まっている時は高さを1回測るだけで返す
+
+### Reset to Default
+選ぶと確認なしで即座に既定値に戻る（ユーザー判断）。`ResetSettingsNode`が、値を戻す → 保存 → 詳細表示を通常表示に戻す → 情報欄の枠を測り直す → `ConsumePadPresses()` の順に行う。枠の測り直しが無いと、Personal BestのOFF→ONなどで行数が変わった情報欄が、ポーズを開き直すまで枠とずれる。
+
+表示中の各項目は作られた時点の値を自分で持っているため、各項目の`Draw`で自分の値と`Settings`の値を直接比べ、違う時だけ同期する。各項目は値を変えたらすぐ`Settings`に書くので、ずれるのはリセットの時だけ。リセット回数のようなカウンターは持たない。
+
+- チェックボックス: `IToggle.OverrideToggle`
+- Show Total: `IOptions.CurrentOption`を書き換える。setterが`OnOptionChange`を呼ぶため、`OnOptionChange`では設定値と同じなら保存しない（二重の書き込みを避ける）
+- Detail Shortcut: キーの配列は登録・リセットのたびに必ず新しい配列を入れる約束にしてあり、参照が変わった時だけラベルを作り直す
+
+## 事象メモ: Give Up してもゲームのセーブが残り、このmodの進捗ファイルだけ消える（2026-10-16、環境要因・mod側は未対応）
+**症状**: ポーズメニューからGive Upした後、起動し直すと「続きから」でゲームを再開できた（本来はセーブが消える）。一方、このmodの進捗ファイル（`F.AreaInfoDisplayOnPause.AreaProgress.xml`）は消えていたため、ゲームは続きからなのに進捗だけリセットされた状態になった。
+
+**原因**: 他mod MoreSaves（Workshop 3239040787）のオートセーブ用フォルダ（`3239040787\auto`・`manual`以下）に、フォルダの読み取り専用属性が付いていた。
+- 付いていたのは2026-06-27 17:47ごろまでに作られたフォルダだけで、それ以降に作られたフォルダには付いていない。MoreSaves・他modのコードに属性を変える処理は無く、何らかの操作で一括で付いたと思われる（何をしたかは不明）
+- Give Upで`SaveLube.DeleteSaves`が呼ばれると、ゲーム本体はセーブをメモリ上で初期化し、このmodのpostfixが進捗ファイルを削除した後、MoreSavesのpostfix（`DeleteAutoSave`）が読み取り専用のフォルダを`Directory.Delete`できず`IOException`（アクセスが拒否されました）を投げる
+- 例外はセーブスレッドで捕まらずにプロセスが終了するため、終了時の`SaveManager.Stop()`（初期化済みのセーブをディスクに書く処理）が走らず、ディスク上の`combined.sav`が古いまま残る
+- JKRuntimeは無関係（同じ例外は導入前の2026-06-28から`crashlog.log`に出ていた）
+
+**確認と解決**: MoreSavesを外すとGive Upが正常に動くことを確認。`attrib -R "...\3239040787\auto\*" /S /D`（`manual`も同様、`auto`・`manual`自身にも`attrib -R`）で読み取り専用を外して解決した。`\*`を付けずに`attrib -R "...\auto" /S /D`とすると中身に適用されないので注意。
+
+**このmod側の今後の検討**: 進捗ファイルを`DeleteSaves`の時点で消すのをやめ、レベル開始時（`OnLevelStart`）にゲームのセーブが新規（`SaveLube.PlayerPosition.time_stamp == 0`）なら消す方式にすれば、他modが原因で`DeleteSaves`の途中で落ちても、ゲームのセーブと進捗がずれなくなる。`SaveManager.IsNewGame`は位置も比べるため、レベル開始前にプレイヤーを移動するNew Babe+では新規と判定されず使えない。未実装。

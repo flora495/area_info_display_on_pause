@@ -67,6 +67,18 @@ namespace AreaInfoDisplayOnPause
             return new PersonalBestToggle();
         }
 
+        [MainMenuItemSetting]
+        public static TextButton MainDetailShortcutSetting(object factory, GuiFormat format)
+        {
+            return DetailShortcutMenu.Create(factory);
+        }
+
+        [MainMenuItemSetting]
+        public static TextButton MainResetToDefaultSetting(object factory, GuiFormat format)
+        {
+            return CreateResetToDefaultButton();
+        }
+
         /// <summary>
         /// Main menu only - deliberately has no [PauseMenuItemSetting] counterpart, so the
         /// cleared-maps history is only browsable from the title screen.
@@ -95,10 +107,30 @@ namespace AreaInfoDisplayOnPause
             return new PersonalBestToggle();
         }
 
+        /// <summary>
+        /// Pause menu only - the title screen has no current run to break down.
+        /// </summary>
         [PauseMenuItemSetting]
-        public static ProgressionDetailToggle PauseProgressionDetailSetting(object factory, GuiFormat format)
+        public static TextButton PauseProgressionDetailSetting(object factory, GuiFormat format)
         {
-            return new ProgressionDetailToggle();
+            return ProgressionDetailMenu.Create(factory);
+        }
+
+        [PauseMenuItemSetting]
+        public static TextButton PauseDetailShortcutSetting(object factory, GuiFormat format)
+        {
+            return DetailShortcutMenu.Create(factory);
+        }
+
+        [PauseMenuItemSetting]
+        public static TextButton PauseResetToDefaultSetting(object factory, GuiFormat format)
+        {
+            return CreateResetToDefaultButton();
+        }
+
+        private static TextButton CreateResetToDefaultButton()
+        {
+            return new TextButton("Reset to Default", new ResetSettingsNode());
         }
     }
 }
