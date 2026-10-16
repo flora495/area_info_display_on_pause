@@ -22,8 +22,9 @@ namespace AreaInfoDisplayOnPause
 
             MenuSelector detail = new RemeasuringMenuSelector(format);
             detail.AddChild(new AreaInfoTextInfo(AreaTracker.GetProgressionDetailText));
-            // With the back button: AreaInfoTextInfo is UnSelectable, and a MenuSelector with
-            // nothing selectable crashes in FixIndex as soon as it's opened.
+            // Initialize() adds the back button, which is needed here: AreaInfoTextInfo is
+            // UnSelectable, and a MenuSelector with nothing selectable crashes in FixIndex as soon
+            // as it's opened.
             detail.Initialize();
             return new TextButton("Show Progression Detail", detail);
         }

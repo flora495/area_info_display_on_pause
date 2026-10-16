@@ -63,19 +63,28 @@ namespace AreaInfoDisplayOnPause
             {
                 m_shownKeyboard = ModEntry.Settings.KeyboardDetailShortcut;
                 m_shownPad = ModEntry.Settings.PadDetailShortcut;
-                base.Text = "Detail Shortcut (KB: " + Describe(m_shownKeyboard, isKeyboard: true)
-                    + " / Pad: " + Describe(m_shownPad, isKeyboard: false) + ")";
+                base.Text = "Detail Shortcut (KB: " + DescribeKeyboard(m_shownKeyboard)
+                    + " / Pad: " + DescribePad(m_shownPad, ModEntry.Settings.PadDetailShortcutIsXInput) + ")";
             }
 
-            private static string Describe(int[] keys, bool isKeyboard)
+            private static string DescribeKeyboard(int[] keys)
+            {
+                return keys.Length == 0 ? "-" : ((Keys)keys[0]).ToString();
+            }
+
+            /// <summary>
+            /// XInput numbers are XNA Buttons flag values (A = 4096 etc.), so they're shown by
+            /// name; DirectInput ones are plain button numbers.
+            /// </summary>
+            private static string DescribePad(int[] keys, bool isXInput)
             {
                 if (keys.Length == 0)
                 {
                     return "-";
                 }
-                if (isKeyboard)
+                if (isXInput)
                 {
-                    return ((Keys)keys[0]).ToString();
+                    return ((Buttons)keys[0]).ToString();
                 }
                 return "Button " + keys[0];
             }

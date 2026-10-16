@@ -171,7 +171,7 @@
 - [ ] 選択に使った決定キーは登録されず、その後に押したキーが登録される
 - [ ] キーボードで登録すると`KB:`側、パッドで登録すると`Pad:`側だけが変わり、ラベルがその場で更新される
 - [ ] 10秒何も押さないと自動でキャンセルされ、設定は変わらない
-- [ ] 登録内容が`F.AreaInfoDisplayOnPause.Settings.xml`の`KeyboardDetailShortcut`/`PadDetailShortcut`に保存され、再起動後も保持される
+- [ ] 登録内容が`F.AreaInfoDisplayOnPause.Settings.xml`の`KeyboardDetailShortcut`/`PadDetailShortcut`/`PadDetailShortcutIsXInput`に保存され、再起動後も保持される
 - [ ] 設定ファイルの`KeyboardDetailShortcut`に数値以外の文字を手で書いて起動しても落ちず、その値は無視される
 
 ### Detail Shortcut（ポーズ中の切り替え）
@@ -185,6 +185,8 @@
 - [ ] Options・Modsなどのサブメニューを開いている間も、キーで切り替えられる
 - [ ] キーボードとパッドの両方を登録した時、どちらのキーでも切り替えられる
 - [ ] XInput/DirectInputの両方で認識されるパッドでも、パッドのキーで切り替えられる
+- [ ] XInput/DirectInputの両方で認識されるパッドで、DirectInput側でボタン1・2などを登録しても、十字キーでカーソルを動かした時に詳細が切り替わらない（設定ファイルの`PadDetailShortcutIsXInput`が`false`の状態）
+- [ ] XInputのパッドで登録すると、ラベルの`Pad:`側が`A`・`B`などのボタン名で表示される（DirectInputでは`Button 番号`）
 - [ ] ゲーム中（ポーズしていない時）に登録したキーを押しても何も起きない
 
 ## 18. Reset to Default

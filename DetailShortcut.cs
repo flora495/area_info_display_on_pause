@@ -1,3 +1,4 @@
+using System;
 using JumpKing.Controller;
 
 namespace AreaInfoDisplayOnPause
@@ -9,6 +10,9 @@ namespace AreaInfoDisplayOnPause
     internal static class DetailShortcut
     {
         public const string KeyboardSaveIdentifier = "pc_keyboard_jump_king";
+
+        // XboxPad's save identifier is this plus the player index; LegacyPad's is a GUID.
+        private const string XInputSaveIdentifierPrefix = "xbox_pad_jump_king";
 
         private static bool s_lastPressed;
 
@@ -37,7 +41,10 @@ namespace AreaInfoDisplayOnPause
         /// Checks every connected device rather than just ControllerManager.GetMain(): one
         /// physical controller can show up as both an XInput and a DirectInput device, and the
         /// "main" one may not be the side the button was bound on (found in hide_pause_window's
-        /// in-game testing). Bails out before touching any device while nothing is bound.
+        /// in-game testing). A pad binding is only matched against pads of the kind it was bound
+        /// on, since XInput and DirectInput number their buttons differently and the numbers
+        /// overlap (DirectInput buttons 1/2/4/8 are XInput's D-pad up/down/left/right).
+        /// Bails out before touching any device while nothing is bound.
         /// </summary>
         private static bool IsPressed()
         {
@@ -53,13 +60,31 @@ namespace AreaInfoDisplayOnPause
                 {
                     continue;
                 }
-                bool isKeyboard = instance.GetPad().GetSaveIdentifier() == KeyboardSaveIdentifier;
-                if (ContainsAny(instance.GetPad().GetPressedButtons(), isKeyboard ? keyboard : pad))
+                string identifier = instance.GetPad().GetSaveIdentifier();
+                int[] bind;
+                if (identifier == KeyboardSaveIdentifier)
+                {
+                    bind = keyboard;
+                }
+                else if (IsXInput(identifier) == ModEntry.Settings.PadDetailShortcutIsXInput)
+                {
+                    bind = pad;
+                }
+                else
+                {
+                    continue;
+                }
+                if (bind.Length != 0 && ContainsAny(instance.GetPad().GetPressedButtons(), bind))
                 {
                     return true;
                 }
             }
             return false;
+        }
+
+        public static bool IsXInput(string saveIdentifier)
+        {
+            return saveIdentifier.StartsWith(XInputSaveIdentifierPrefix, StringComparison.Ordinal);
         }
 
         private static bool ContainsAny(int[] pressed, int[] bind)

@@ -25,12 +25,15 @@ namespace AreaInfoDisplayOnPause
                 return BTresult.Running;
             }
 
-            if (main.GetPad().GetSaveIdentifier() == DetailShortcut.KeyboardSaveIdentifier)
+            string identifier = main.GetPad().GetSaveIdentifier();
+            if (identifier == DetailShortcut.KeyboardSaveIdentifier)
             {
                 ModEntry.Settings.KeyboardDetailShortcut = new[] { pressed[0] };
             }
             else
             {
+                // Set before the array: the button label rebuilds on the array's reference change.
+                ModEntry.Settings.PadDetailShortcutIsXInput = DetailShortcut.IsXInput(identifier);
                 ModEntry.Settings.PadDetailShortcut = new[] { pressed[0] };
             }
             ModEntry.SaveSettings();

@@ -908,13 +908,14 @@ MoreTextOptionsの`PatchSpriteBatch`（`SpriteBatch.DrawString`へのパッチ�
 - 情報欄の枠は`BTsimultaneous`の中の`StaticNode`の子。`StaticNode.MyRun`は結果に関係なく必ず子を実行し、`BTsimultaneous`は stats → 情報欄 → `m_main_menu` の順に毎フレーム全員を実行する → サブメニュー（Options等）を開いている間も判定は動き、メインメニューの入力処理より先に走る
 - ポーズ画面の処理の中にあるため、hide_pause_windowが将来`PauseUpdate`自体を止めるようにすれば、判定も自動的に止まる
 
-判定（`DetailShortcut`）は hide_pause_window の`IsToggleKeyPressed`と同じく接続中の全デバイスを見る（1台のパッドがXInput/DirectInputの2台に見える環境への対策）。ただし未登録の間はデバイスをたどる前に配列の長さだけ見て抜ける。押した瞬間だけを拾い、ポーズを開いた時とキー登録の直後は「押されたまま」とみなす（hide_pause_windowの`SuppressCurrentToggleEdge`と同じ考え方）。
+判定（`DetailShortcut`）は hide_pause_window の`IsToggleKeyPressed`と同じく接続中の全デバイスを見る（1台のパッドがXInput/DirectInputの2台に見える環境への対策）。ただしパッドのキーは、登録した時と同じ種類（XInput / DirectInput）のパッドとだけ照合する。XInput（`XboxPad`）のボタン番号はXNAの`Buttons`のビット値（十字キー上下左右=1/2/4/8、Start=16、Back=32…）、DirectInput（`LegacyPad`）は1から数えた連番で、番号が重なるため。種類を見ないと、DirectInput側でボタン1を登録した時にXInput側の十字キー上でも切り替わってしまう。種類は登録時に`GetSaveIdentifier()`が`xbox_pad_jump_king`で始まるかで判別し、`Settings.PadDetailShortcutIsXInput`に保存する（hide_pause_windowの`IsToggleKeyPressed`は種類を見ていないので、同じ問題が残っている）。ただし未登録の間はデバイスをたどる前に配列の長さだけ見て抜ける。押した瞬間だけを拾い、ポーズを開いた時とキー登録の直後は「押されたまま」とみなす（hide_pause_windowの`SuppressCurrentToggleEdge`と同じ考え方）。
 
 ### キー登録UI（hide_pause_window から流用）
 `DetailShortcutMenu`・`CaptureDetailShortcutNode`・`WaitUntilNoRawInputNode`は hide_pause_window の`HideWindowKeyMenu`・`CaptureToggleKeyNode`・`WaitUntilNoRawInputNode`の流用。`TextButton`の子は`BindButtonFrame`自身にする（キャプチャ処理を直接渡すと画面が固まる、hide_pause_windowの実機で発覚済み）。流用元との違い:
 
 - 設定の読み込みは`int.TryParse`にし、読めない値は無視して未設定扱いにする（流用元の`int.Parse`は壊れた値で例外になる）
 - `BindButtonFrame`の描画登録は`MenuFactoryPatches.AddDrawable`経由。タイトル画面のMod設定は`BeforeLevelLoad`（＝`MenuFactoryPatches.Apply`）より先に組み立てられることがあるため、`AddDrawable`のメソッドが未取得ならその場で`factory.GetType()`から取得する
+- パッドのキーの種類（XInput / DirectInput）も保存し、判定とラベルに使う（上記）。XInputのボタンはラベルに`Buttons`の名前（`A`・`DPadUp`など）で出す。DirectInputは`Button 番号`のまま
 - ラベルの更新はキャプチャ側では行わず、ボタン（`DetailShortcutButton`）自身が`Draw`の中で`Settings`の配列と参照比較して作り直す。リセット時の同期と同じ仕組みで済む
 - ラベルが長くなると（例: `Detail Shortcut (KB: LeftShift / Pad: Button 10)`）設定一覧の枠からはみ出すが、対応しない（ユーザー判断。Show Totalのはみ出しと同じく、枠はメニューを組み立てた時にしか測られないため）
 
