@@ -102,15 +102,29 @@
 
 - [x] ワープを使って通常ではあり得ない順序でエリアに到達した場合の挙動を確認し、明らかな不整合（クラッシュ・PBの逆行など）が無いことだけ確認する（完全な正確性は保証されない仕様）
 
-## 12. Babe（エンディング）画面の特別表示
+## 12. Babe（エンディング）画面の独立エリア化（Babe as Area）
 
-- [x] バニラ本編で、42画面目（New Babe）にちょうどいる時、通常のエリア表示の代わりに`Babe`と表示される
-- [x] 同様に99画面目（New Babe Plus）・153画面目（Owl）でも`Babe`と表示される（3つとも区別せず同じ`Babe`）
-- [x] Babe画面にいる間、PB行（`PB: Babe`）・Progression Detailの`pb:`行も同様に`Babe`になる
-- [x] Babe画面から1画面でも離れる（先に進む・下に落ちる）と、**現在地表示**は通常のエリア表示に戻る。**PB行・`pb:`行**は、PBの実体（裏側で追跡しているエリア・ページ）がそのBabe画面のままなら`Babe`の表示を維持する（`Babe`は専用の状態ではなく、PBの結果がたまたまBabe画面に一致した時だけ表示上差し替えているだけ）
-- [x] Babeに到達した後、それまで訪れていない新しいエリアに入ると、PB行・`pb:`行は`Babe`から、その新しいエリアの表示（`エリア名 ページ`）に正しく更新される（Babeに到達しても裏側の扱いは通常のエリアと変わらないため）
-- [x] カスタムレベル（`level_settings.xml`に`ending_screen`/`ending_screen_second`/`ending_screen_third`があるもの）でも、該当画面で`Babe`が表示される
-- [x] Babe画面に到達すると、その画面が属する本来のエリア（例: `main babe`の`The Tower`4枚目がBabeの場合は`The Tower`自身）が「突破済み」になる（**Show Total = 突破後に表示**設定で、Babeから離れた後の`The Tower`の表示が`n/m`形式に切り替わっていることで確認）
+### Babe as Area = ON（既定）
+- [ ] バニラ本編で、New BabeのBabe画面にちょうどいる時、現在地が`Babe`（Attempt Counter ONなら`Babe (#n)`）と表示される。ページ番号・総数は付かない
+- [ ] 同様にNew Babe Plus・OwlのBabe画面でも`Babe`と表示される（3つとも区別せず同じ`Babe`）
+- [ ] Babe画面に初めて着地した時点で、Progression Detailに`Babe (#1) 到達時刻`の行が独立して追加される
+- [ ] Babe画面から下に落ちて、もう一度登ってBabe画面に着地すると、`Babe`の挑戦回数が`+1`される
+- [ ] Babeの上の画面から落ちてBabe画面に着地した場合は、`Babe`の挑戦回数は増えない
+- [ ] Babeが元のエリアの途中にある場合（例: `main babe`の`The Tower`4枚目）、Babe以外の画面では元のエリアのページ番号・総数（`n/m`の`m`）がBabe as Area OFFの時と同じ（Babeで総数が減っていない）
+- [ ] Babe画面に到達すると、その画面が属する元のエリアが「突破済み」になる（Show Total = AFTER CLEARで、元のエリアの表示が`n/m`形式に切り替わる）
+- [ ] Babe到達後、PB行・`pb:`行が`Babe`になる。その後、新しいエリアに入るとPBはそちらに更新される
+- [ ] マップをクリアすると、Beaten Mapsの詳細に`Babe (#n) 到達時刻`の行が含まれる（ジャンプ中にBabeに触れてクリアした場合も含む）
+- [ ] 元のエリアのstartがBabe画面と同じカスタムレベルでも、元のエリアとBabeが別々の行として記録される
+- [ ] カスタムレベル（`level_settings.xml`に`ending_screen`/`ending_screen_second`/`ending_screen_third`があるもの）でも、該当画面が`Babe`として扱われる
+
+### Babe as Area = OFF
+- [ ] Babe画面でも元のエリア名とページ番号（`The Tower 4/x`など）が表示され、Progression Detail・Beaten Mapsにも`Babe`の行は追加されない
+- [ ] Babe画面に到達しても、元のエリアが突破済みにならない（特別扱いしない）
+
+### 切り替え
+- [ ] プレイ途中でON→OFFにすると、すぐに表示が元のエリア名に戻る。それまでに記録された`Babe`の行は残る
+- [ ] プレイ途中でOFF→ONにすると、Babe画面にいればすぐに`Babe`として記録される（挑戦回数は増えない）
+- [ ] Reset to DefaultでONに戻る
 
 ## 13. カスタムマップごとに調査する
 - [x] main babe

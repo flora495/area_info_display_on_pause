@@ -24,21 +24,47 @@ namespace AreaInfoDisplayOnPause
 
         private const string NoProgressionDetailText = "No areas reached yet";
 
+        /// <summary>Shown for all 3 Babe areas alike (see s_babeLocations).</summary>
+        private const string BabeDisplayName = "Babe";
+
+        /// <summary>
+        /// Location.name of the synthetic Babe Locations, marking them apart from the level's own
+        /// ones (IsBabe). Never displayed - BabeDisplayName is - and not something a level's
+        /// location_settings.xml would plausibly contain.
+        /// </summary>
+        private const string BabeLocationName = "\u0001AreaInfoDisplayOnPause.Babe";
+
+        /// <summary>The level's own Locations only (never the Babe ones), sorted by start.</summary>
         private static Location[] s_sortedLocations = new Location[0];
         private static string s_currentLevelKey = string.Empty;
         private static Location? s_lastExactArea;
 
+        /// <summary>The screen s_lastExactArea was last exact-matched on.</summary>
+        private static int s_lastExactScreenIndex1;
+
         /// <summary>
-        /// The level's 3 "Babe" ending screens (see EndingScreensAccessor), in Normal/New Babe
-        /// Plus/Owl order (not otherwise distinguished - see GetBabeDisplayText). Purely a
-        /// display-time substitution - standing exactly on one of these screens shows "Babe"
-        /// instead of the normal area text, and GetPersonalBestText shows "Babe" whenever the PB's
-        /// own deepest screen happens to land on one of these, but neither touches
-        /// AreaProgressStore at all: the real Location underneath keeps tracking normally
-        /// (Order/AttemptCount/BestScreenIndex/HasFullyCleared), so the override is just whatever
-        /// those numbers currently resolve to, not a separate sticky state of its own.
+        /// The level's 3 "Babe" ending screens (see EndingScreensAccessor), with duplicates and
+        /// unset (non-positive) values dropped. Kept regardless of BabeAsAreaEnabled, so turning
+        /// it on mid-level can rebuild s_babeLocations without going back to the engine.
         /// </summary>
         private static int[] s_babeScreens = new int[0];
+
+        /// <summary>
+        /// While BabeAsAreaEnabled is on, one single-screen Location per Babe screen, each its own
+        /// area in every respect (Order, attempts, lap time, cleared history), displayed as
+        /// BabeDisplayName. ResolveArea checks these before the level's own Locations, so a Babe
+        /// screen always resolves to its Babe area even though it sits inside (or on the start of)
+        /// one of them. Empty while the setting is off: Babe screens then just belong to whatever
+        /// Location they're in, with no special handling at all.
+        ///
+        /// Stored in AreaProgressStore under GetAreaKey's negative key, not the screen number
+        /// itself, so a Babe area never shares an entry with a level Location starting on that
+        /// same screen.
+        /// </summary>
+        private static Location[] s_babeLocations = new Location[0];
+
+        /// <summary>The BabeAsAreaEnabled value s_babeLocations was last built for.</summary>
+        private static bool s_babeLocationsEnabled;
 
         /// <summary>
         /// Set whenever the player isn't exact-matched to s_lastExactArea (a "gap", or briefly a
@@ -70,10 +96,9 @@ namespace AreaInfoDisplayOnPause
             Location[] locations = LocationSettingsAccessor.GetCurrentLocations();
             Array.Sort(locations, (a, b) => a.start.CompareTo(b.start));
             s_sortedLocations = locations;
-            s_babeScreens = EndingScreensAccessor.GetBabeScreens();
-            s_lastExactArea = null;
-            s_awayFromLastArea = false;
-            s_lastScreenIndex1 = null;
+            s_babeScreens = GetDistinctBabeScreens();
+            BuildBabeLocations();
+            ResetTransitionState();
             ShowProgressionDetail = false;
 
             if (s_sortedLocations.Length == 0)
@@ -86,14 +111,16 @@ namespace AreaInfoDisplayOnPause
             // happens to resume sitting on the literal first screen doesn't look like a fresh
             // "landed here" transition to OnUpdate's isOnFirstScreen check on its very next frame.
             s_wasOnFirstScreen = screenIndex1 == s_sortedLocations[0].start;
-            AreaProgressStore.RestoreClearedOnResume(s_currentLevelKey, s_sortedLocations, screenIndex1);
+            foreach (Location location in s_sortedLocations)
+            {
+                AreaProgressStore.RestoreClearedOnResume(s_currentLevelKey, GetAreaKey(location), location.end, screenIndex1);
+            }
+            foreach (Location location in s_babeLocations)
+            {
+                AreaProgressStore.RestoreClearedOnResume(s_currentLevelKey, GetAreaKey(location), location.end, screenIndex1);
+            }
 
-            LocationResolver.Result resolved = LocationResolver.Resolve(s_sortedLocations, screenIndex1);
-
-            // Covers resuming a save sitting exactly on a Babe screen - OnUpdate's own check
-            // wouldn't see this until the next frame's transition, if ever (it only fires on
-            // landing, and the player may already have been standing there before the reload).
-            bool isOnBabeScreen = GetBabeDisplayText(screenIndex1) != null;
+            LocationResolver.Result resolved = ResolveArea(screenIndex1);
 
             if (!resolved.IsExactMatch)
             {
@@ -106,15 +133,14 @@ namespace AreaInfoDisplayOnPause
             }
 
             Location area = resolved.Area.Value;
-            AreaProgressStore.OnEnterArea(s_currentLevelKey, area.start, null, false, PlayTimeAccessor.GetCurrentPlayTime());
-            AreaProgressStore.UpdateBestProgress(s_currentLevelKey, area.start, screenIndex1);
-            if (isOnBabeScreen)
-            {
-                // Only after OnEnterArea above, so area is guaranteed to already be registered -
-                // MarkCleared is a no-op against an area with no entry yet.
-                AreaProgressStore.MarkCleared(s_currentLevelKey, area.start);
-            }
+            AreaProgressStore.OnEnterArea(s_currentLevelKey, GetAreaKey(area), area.start, null, false, PlayTimeAccessor.GetCurrentPlayTime());
+            AreaProgressStore.UpdateBestProgress(s_currentLevelKey, GetAreaKey(area), screenIndex1);
+            // Covers resuming a save sitting exactly on a Babe screen - OnUpdate's own check
+            // wouldn't see this until the next frame's transition, if ever (it only fires on
+            // landing, and the player may already have been standing there before the reload).
+            MarkBabeContainingAreaCleared(area);
             s_lastExactArea = area;
+            s_lastExactScreenIndex1 = screenIndex1;
         }
 
         public static void OnUpdate()
@@ -123,6 +149,7 @@ namespace AreaInfoDisplayOnPause
             {
                 return;
             }
+            EnsureBabeLocationsCurrent();
 
             // Checked before the (pricier, entity/component-lookup-based) ground check below: if
             // the screen hasn't changed since the last frame that actually ran past both checks,
@@ -144,11 +171,35 @@ namespace AreaInfoDisplayOnPause
             {
                 return;
             }
+            ProcessScreen(screenIndex1);
+        }
+
+        /// <summary>
+        /// Called right before the ending's clear record is built. The ending can start on a Babe
+        /// screen the player never landed on (touching the Babe mid-jump), which OnUpdate's ground
+        /// check would otherwise leave unregistered - and the Babe area would then be missing from
+        /// the cleared history. Only catches up a Babe screen, so nothing else is registered off
+        /// wherever the camera happens to be when the ending starts.
+        /// </summary>
+        private static void CatchUpBabeScreenOnClear()
+        {
+            if (s_sortedLocations.Length == 0)
+            {
+                return;
+            }
+            EnsureBabeLocationsCurrent();
+            int screenIndex1 = Camera.CurrentScreenIndex1;
+            if (screenIndex1 != s_lastScreenIndex1 && TryGetBabeLocation(screenIndex1, out _))
+            {
+                ProcessScreen(screenIndex1);
+            }
+        }
+
+        private static void ProcessScreen(int screenIndex1)
+        {
             s_lastScreenIndex1 = screenIndex1;
 
-            LocationResolver.Result resolved = LocationResolver.Resolve(s_sortedLocations, screenIndex1);
-
-            bool isOnBabeScreen = GetBabeDisplayText(screenIndex1) != null;
+            LocationResolver.Result resolved = ResolveArea(screenIndex1);
 
             // The very first area has no area below it to register a "left, then came back"
             // transition through in the usual sense - the only thing below it is the literal
@@ -175,8 +226,9 @@ namespace AreaInfoDisplayOnPause
             }
 
             Location newExactArea = resolved.Area.Value;
-            bool isFirstArea = newExactArea.start == s_sortedLocations[0].start;
-            bool areaChanged = !s_lastExactArea.HasValue || newExactArea.start != s_lastExactArea.Value.start;
+            int newKey = GetAreaKey(newExactArea);
+            bool isFirstArea = newKey == GetAreaKey(s_sortedLocations[0]);
+            bool areaChanged = !s_lastExactArea.HasValue || newKey != GetAreaKey(s_lastExactArea.Value);
             // Returning to the very same area after being away (a gap, or a side trip) is just as
             // much a fresh attempt as climbing into a different, later area - except for the first
             // area, which uses its own isOnFirstScreen-based rule above instead.
@@ -193,14 +245,26 @@ namespace AreaInfoDisplayOnPause
                     // higher, or reached via a warp to an arbitrary screen), so a plain "did the
                     // screen index move past this area's end" check flags side trips as clears.
                     Location? nextLocation = FindNextLocation(s_lastExactArea.Value);
-                    if (nextLocation.HasValue && newExactArea.start == nextLocation.Value.start)
+                    if (nextLocation.HasValue && newKey == GetAreaKey(nextLocation.Value))
                     {
-                        AreaProgressStore.MarkCleared(s_currentLevelKey, s_lastExactArea.Value.start);
+                        AreaProgressStore.MarkCleared(s_currentLevelKey, GetAreaKey(s_lastExactArea.Value));
                     }
                 }
 
-                int? previousStart = s_lastExactArea?.start;
-                AreaProgressStore.OnEnterArea(s_currentLevelKey, newExactArea.start, previousStart, returnedAfterLeaving, PlayTimeAccessor.GetCurrentPlayTime());
+                // Climb-or-fall is normally judged by the two areas' starts (see OnEnterArea). A
+                // Babe area usually sits inside another area, though, so the containing area's
+                // start says nothing about which side of the Babe the player was on - e.g. falling
+                // from the containing area's last page onto the Babe below it would look like a
+                // climb. Whenever a Babe is on either side, the actual screens are compared instead.
+                int? previousPosition = null;
+                int newPosition = newExactArea.start;
+                if (s_lastExactArea.HasValue)
+                {
+                    bool babeInvolved = IsBabe(s_lastExactArea.Value) || IsBabe(newExactArea);
+                    previousPosition = babeInvolved ? s_lastExactScreenIndex1 : s_lastExactArea.Value.start;
+                    newPosition = babeInvolved ? screenIndex1 : newExactArea.start;
+                }
+                AreaProgressStore.OnEnterArea(s_currentLevelKey, newKey, newPosition, previousPosition, returnedAfterLeaving, PlayTimeAccessor.GetCurrentPlayTime());
 
                 if (s_lastExactArea.HasValue)
                 {
@@ -210,22 +274,35 @@ namespace AreaInfoDisplayOnPause
                     // is the next area visited) and why it's safe against side paths. Placed after
                     // OnEnterArea so newExactArea's Order is already registered if this is the
                     // first time it's ever been seen.
-                    AreaProgressStore.MarkClearedIfOrderSequential(s_currentLevelKey, s_lastExactArea.Value.start, s_lastExactArea.Value.end, newExactArea.start);
+                    AreaProgressStore.MarkClearedIfOrderSequential(s_currentLevelKey, GetAreaKey(s_lastExactArea.Value), s_lastExactArea.Value.end, newKey);
                 }
             }
 
             s_lastExactArea = newExactArea;
+            s_lastExactScreenIndex1 = screenIndex1;
             s_awayFromLastArea = false;
-            AreaProgressStore.UpdateBestProgress(s_currentLevelKey, newExactArea.start, screenIndex1);
+            AreaProgressStore.UpdateBestProgress(s_currentLevelKey, newKey, screenIndex1);
 
-            if (isOnBabeScreen)
+            MarkBabeContainingAreaCleared(newExactArea);
+        }
+
+        /// <summary>
+        /// If area is a Babe area, marks the level Location its screen sits in as cleared:
+        /// reaching a Babe ending screen means the area it sits in has, by definition, been fully
+        /// played through - the same as genuinely reaching the next area in sequence. Does nothing
+        /// if that Location was never registered (MarkCleared is a no-op then), e.g. when a warp
+        /// skipped it entirely.
+        /// </summary>
+        private static void MarkBabeContainingAreaCleared(Location area)
+        {
+            if (!IsBabe(area))
             {
-                // Only after OnEnterArea above (inside the areaChanged/returnedAfterLeaving branch,
-                // or from an earlier visit), so newExactArea is guaranteed to already be registered
-                // - MarkCleared is a no-op against an area with no entry yet. Reaching a Babe ending
-                // screen means the area it sits in has, by definition, been fully played through -
-                // mark it cleared too, the same as genuinely reaching the next area in sequence.
-                AreaProgressStore.MarkCleared(s_currentLevelKey, newExactArea.start);
+                return;
+            }
+            LocationResolver.Result containing = LocationResolver.Resolve(s_sortedLocations, area.start);
+            if (containing.IsExactMatch)
+            {
+                AreaProgressStore.MarkCleared(s_currentLevelKey, GetAreaKey(containing.Area.Value));
             }
         }
 
@@ -233,9 +310,20 @@ namespace AreaInfoDisplayOnPause
         /// The Location immediately following p_area in start order, or null if p_area is the
         /// last one. Used to recognise genuine forward progress into the next area, as opposed
         /// to a detour into some other area or gap.
+        ///
+        /// Only ever looks among the level's own Locations, so a Babe area sitting inside or
+        /// right after p_area never counts as p_area's "next" - which keeps both p_area's own
+        /// clear rule and GetEffectiveTotal's page count exactly what they'd be with no Babe
+        /// areas at all. For a Babe area itself, the "next" is whatever level Location the screen
+        /// right above it exact-matches: climbing out of the top of a Babe screen is finishing it.
         /// </summary>
         private static Location? FindNextLocation(Location p_area)
         {
+            if (IsBabe(p_area))
+            {
+                LocationResolver.Result above = LocationResolver.Resolve(s_sortedLocations, p_area.start + 1);
+                return above.IsExactMatch ? above.Area : null;
+            }
             for (int i = 0; i < s_sortedLocations.Length; i++)
             {
                 if (s_sortedLocations[i].start == p_area.start)
@@ -266,6 +354,7 @@ namespace AreaInfoDisplayOnPause
 
         public static string GetDisplayText()
         {
+            EnsureBabeLocationsCurrent();
             if (ShowProgressionDetail)
             {
                 // Unlike the Show Progression Detail popup, the pause-info box can't be split into
@@ -276,22 +365,111 @@ namespace AreaInfoDisplayOnPause
             return AppendPersonalBest(GetCurrentAreaDisplayText());
         }
 
-        /// <summary>
-        /// "Babe" if screenIndex1 is exactly one of the level's 3 ending screens (see
-        /// s_babeScreens; the 3 aren't distinguished from each other), overriding whatever the
-        /// normal Location-based resolution would otherwise show for that single screen. Null
-        /// everywhere else.
-        /// </summary>
-        private static string GetBabeDisplayText(int screenIndex1)
+        private static int[] GetDistinctBabeScreens()
         {
-            for (int i = 0; i < s_babeScreens.Length; i++)
+            var screens = new List<int>();
+            foreach (int screen in EndingScreensAccessor.GetBabeScreens())
             {
-                if (s_babeScreens[i] == screenIndex1)
+                if (screen > 0 && !screens.Contains(screen))
                 {
-                    return "Babe";
+                    screens.Add(screen);
                 }
             }
-            return null;
+            return screens.ToArray();
+        }
+
+        private static void BuildBabeLocations()
+        {
+            s_babeLocationsEnabled = ModEntry.Settings.BabeAsAreaEnabled;
+            if (!s_babeLocationsEnabled)
+            {
+                s_babeLocations = new Location[0];
+                return;
+            }
+            s_babeLocations = new Location[s_babeScreens.Length];
+            for (int i = 0; i < s_babeScreens.Length; i++)
+            {
+                s_babeLocations[i] = new Location
+                {
+                    start = s_babeScreens[i],
+                    end = s_babeScreens[i],
+                    unlock = s_babeScreens[i],
+                    name = BabeLocationName,
+                };
+            }
+        }
+
+        /// <summary>
+        /// Picks up a BabeAsAreaEnabled change made since the Babe areas were last built (its
+        /// toggle, or Reset to Default). The area the player was last in may stop existing (or
+        /// start existing) with the change, so the transition state is dropped too: the next
+        /// OnUpdate then re-registers the current screen as a quiet, no-attempt arrival - the
+        /// same as a level start does.
+        /// </summary>
+        private static void EnsureBabeLocationsCurrent()
+        {
+            if (s_babeLocationsEnabled == ModEntry.Settings.BabeAsAreaEnabled)
+            {
+                return;
+            }
+            BuildBabeLocations();
+            ResetTransitionState();
+        }
+
+        private static void ResetTransitionState()
+        {
+            s_lastExactArea = null;
+            s_lastExactScreenIndex1 = 0;
+            s_awayFromLastArea = false;
+            s_lastScreenIndex1 = null;
+        }
+
+        private static bool IsBabe(Location location)
+        {
+            return location.name == BabeLocationName;
+        }
+
+        /// <summary>
+        /// The key an area's progress is stored under in AreaProgressStore (and the cleared
+        /// history): a level Location's own start, or minus the screen for a Babe area. Starts
+        /// are screen numbers, which count from 1, so the two ranges can never collide - not even
+        /// when a level Location starts on the Babe screen itself.
+        /// </summary>
+        private static int GetAreaKey(Location location)
+        {
+            return IsBabe(location) ? -location.start : location.start;
+        }
+
+        private static bool IsBabeKey(int key)
+        {
+            return key < 0;
+        }
+
+        private static bool TryGetBabeLocation(int screenIndex1, out Location babe)
+        {
+            foreach (Location location in s_babeLocations)
+            {
+                if (location.start == screenIndex1)
+                {
+                    babe = location;
+                    return true;
+                }
+            }
+            babe = default(Location);
+            return false;
+        }
+
+        /// <summary>
+        /// LocationResolver.Resolve against the level's own Locations, except that a Babe area
+        /// (while enabled) always wins its own screen outright.
+        /// </summary>
+        private static LocationResolver.Result ResolveArea(int screenIndex1)
+        {
+            if (TryGetBabeLocation(screenIndex1, out Location babe))
+            {
+                return new LocationResolver.Result(babe, true);
+            }
+            return LocationResolver.Resolve(s_sortedLocations, screenIndex1);
         }
 
         private static string GetCurrentAreaDisplayText()
@@ -303,13 +481,7 @@ namespace AreaInfoDisplayOnPause
 
             int screenIndex1 = Camera.CurrentScreenIndex1;
 
-            string babeText = GetBabeDisplayText(screenIndex1);
-            if (babeText != null)
-            {
-                return babeText;
-            }
-
-            LocationResolver.Result resolved = LocationResolver.Resolve(s_sortedLocations, screenIndex1);
+            LocationResolver.Result resolved = ResolveArea(screenIndex1);
             if (resolved.Area == null)
             {
                 return string.Empty;
@@ -321,6 +493,12 @@ namespace AreaInfoDisplayOnPause
             }
 
             Location area = resolved.Area.Value;
+            if (IsBabe(area))
+            {
+                // A single screen, so no page number - just the name and the attempt count.
+                return AppendAttemptCount(BabeDisplayName, GetAreaKey(area));
+            }
+
             string name = GetAreaDisplayName(area.name);
             // Page numbers count from "unlock", not "start": when start < unlock (e.g. False
             // Kings Keep: start=10, unlock=11), screens before unlock belong to the previous
@@ -347,9 +525,14 @@ namespace AreaInfoDisplayOnPause
                 ? $"{name} {current}/{GetEffectiveTotal(area)}"
                 : $"{name} {current}/x";
 
+            return AppendAttemptCount(text, GetAreaKey(area));
+        }
+
+        private static string AppendAttemptCount(string text, int areaKey)
+        {
             if (ModEntry.Settings.AttemptCounterEnabled)
             {
-                int attempts = AreaProgressStore.GetAttemptCount(s_currentLevelKey, area.start);
+                int attempts = AreaProgressStore.GetAttemptCount(s_currentLevelKey, areaKey);
                 if (attempts > 0)
                 {
                     // The game's bitmap MenuFont has no Japanese glyphs (non-ASCII characters
@@ -357,7 +540,6 @@ namespace AreaInfoDisplayOnPause
                     text += $" (#{attempts})";
                 }
             }
-
             return text;
         }
 
@@ -367,11 +549,9 @@ namespace AreaInfoDisplayOnPause
         /// deepest page ever reached within it - e.g. "Colossal Drain 4" if the player got to page
         /// 4 of it but never reached page 5. Null if nothing's been reached yet.
         ///
-        /// "Babe" instead, if that deepest page happens to land exactly on one of the level's 3
-        /// Babe ending screens - this is purely a display substitution (the underlying area/Order/
-        /// page tracking is completely unaware of it), so it's automatically overwritten the moment
-        /// the PB later moves past that point onto some other, later-discovered area, the same as
-        /// any other area's PB text would be.
+        /// Just "Babe" when the PB area is a Babe area (a single screen, so no page). That's
+        /// decided by the stored key alone, not by BabeAsAreaEnabled, so a Babe area reached
+        /// before the setting was turned off still reads as one.
         /// </summary>
         private static string GetPersonalBestText()
         {
@@ -380,10 +560,9 @@ namespace AreaInfoDisplayOnPause
             {
                 return null;
             }
-            string babeText = GetBabeDisplayText(pb.Value.BestScreenIndex);
-            if (babeText != null)
+            if (IsBabeKey(pb.Value.Start))
             {
-                return babeText;
+                return BabeDisplayName;
             }
             Location? area = FindLocation(pb.Value.Start);
             if (!area.HasValue)
@@ -424,6 +603,7 @@ namespace AreaInfoDisplayOnPause
         /// </summary>
         internal static string GetProgressionDetailText()
         {
+            EnsureBabeLocationsCurrent();
             List<AreaProgressStore.AreaSummary> areas = AreaProgressStore.GetVisitedAreas(s_currentLevelKey);
             if (areas.Count == 0)
             {
@@ -474,6 +654,7 @@ namespace AreaInfoDisplayOnPause
         /// </summary>
         public static ClearedMapHistoryStore.ClearedRecord BuildClearedRecord()
         {
+            CatchUpBabeScreenOnClear();
             var record = new ClearedMapHistoryStore.ClearedRecord
             {
                 LevelKey = s_currentLevelKey,
@@ -497,8 +678,13 @@ namespace AreaInfoDisplayOnPause
             return record;
         }
 
+        /// <summary>Display name for an AreaProgressStore key (see GetAreaKey).</summary>
         private static string FindAreaName(int start)
         {
+            if (IsBabeKey(start))
+            {
+                return BabeDisplayName;
+            }
             Location? location = FindLocation(start);
             if (!location.HasValue)
             {

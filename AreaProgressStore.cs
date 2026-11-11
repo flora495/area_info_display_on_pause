@@ -2,13 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Xml.Linq;
-using JumpKing.MiscSystems.LocationText;
 
 namespace AreaInfoDisplayOnPause
 {
     /// <summary>
     /// Per-area progress (first-visit order, attempt count, whether the area has been fully
-    /// cleared at least once), keyed by level and by the area's start screen. Persisted to its
+    /// cleared at least once), keyed by level and by the area's start screen (negated for a Babe
+    /// area - see AreaTracker.GetAreaKey; every "start"/"key" parameter here is that key, except
+    /// OnEnterArea's newStart/previousStart). Persisted to its
     /// own XML file kept in sync with the game's own save lifecycle via SaveLubePatches.
     /// </summary>
     internal static class AreaProgressStore
@@ -200,15 +201,20 @@ namespace AreaInfoDisplayOnPause
         /// newStart in that case and the plain comparison below would never fire. Not used for the
         /// very first area - see AreaTracker's isOnFirstScreen/BumpAttempt instead, since it has no
         /// area below it to register a "gap departure" from in the first place.
+        ///
+        /// newKey is what the entry is stored under (AreaTracker.GetAreaKey - the area's start,
+        /// except for a Babe area), kept apart from newStart/previousStart, which are only ever
+        /// compared as screen positions. AreaTracker passes the actual screens rather than the
+        /// areas' starts for a transition into or out of a Babe area.
         /// </summary>
-        public static void OnEnterArea(string levelKey, int newStart, int? previousStart, bool forceBump, TimeSpan playTime)
+        public static void OnEnterArea(string levelKey, int newKey, int newStart, int? previousStart, bool forceBump, TimeSpan playTime)
         {
             lock (s_lock)
             {
                 LevelEntry levelEntry = GetOrCreateLevel(levelKey);
-                if (!levelEntry.Areas.TryGetValue(newStart, out AreaEntry newEntry))
+                if (!levelEntry.Areas.TryGetValue(newKey, out AreaEntry newEntry))
                 {
-                    levelEntry.Areas[newStart] = new AreaEntry { Order = levelEntry.NextOrder++, AttemptCount = 1, HasFullyCleared = false, LapTime = playTime };
+                    levelEntry.Areas[newKey] = new AreaEntry { Order = levelEntry.NextOrder++, AttemptCount = 1, HasFullyCleared = false, LapTime = playTime };
                     s_dirty = true;
                     return;
                 }
@@ -316,21 +322,20 @@ namespace AreaInfoDisplayOnPause
         /// This does *not* retroactively create entries for areas that have no entry at all (e.g.
         /// ones passed before this mod was ever installed) - those are simply left unrecorded
         /// until the player visits them again with the mod active.
+        ///
+        /// Called once per area (key as in OnEnterArea, end being the area's last screen).
         /// </summary>
-        public static void RestoreClearedOnResume(string levelKey, Location[] sortedLocations, int screenIndex1)
+        public static void RestoreClearedOnResume(string levelKey, int key, int end, int screenIndex1)
         {
             lock (s_lock)
             {
                 LevelEntry levelEntry = GetOrCreateLevel(levelKey);
-                foreach (Location location in sortedLocations)
+                if (end < screenIndex1
+                    && levelEntry.Areas.TryGetValue(key, out AreaEntry entry)
+                    && !entry.HasFullyCleared)
                 {
-                    if (location.end < screenIndex1
-                        && levelEntry.Areas.TryGetValue(location.start, out AreaEntry entry)
-                        && !entry.HasFullyCleared)
-                    {
-                        entry.HasFullyCleared = true;
-                        s_dirty = true;
-                    }
+                    entry.HasFullyCleared = true;
+                    s_dirty = true;
                 }
             }
         }
