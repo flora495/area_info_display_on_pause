@@ -969,7 +969,7 @@ hide_pause_windowは別のmodなので、このmodにはhide_pause_windowのた�
 - Babe画面ごとに`start = end = unlock = 画面番号`の`Location`を作る（`s_babeLocations`）。`name`には表示されない目印の文字列を入れて、レベル本来の`Location`と区別する（`IsBabe`）。レベル本来の一覧`s_sortedLocations`には混ぜない
 - 画面の解決は`ResolveArea`で、Babe画面なら必ずBabeのエリアを返し、それ以外は従来どおり`LocationResolver.Resolve`
 - **進捗データのキー**: Babeのエリアは`-画面番号`をキーにして`AreaProgressStore`に保存する（`GetAreaKey`）。レベル本来のエリアは従来どおり`start`。画面番号は1以上なので重ならない。Babe画面がちょうど別のエリアの`start`になっているカスタムレベルでも、両者が同じ行にまとまらない。名前の解決（`FindAreaName`）・PBの表示は、キーが負ならそれだけで`Babe`とする（設定をOFFにした後でも、それまでに記録された`Babe`の行は`Babe`と表示される）
-- **元のエリアの総数・ページ番号を変えない**: `FindNextLocation`はレベル本来の`Location`だけから探すため、Babeが途中にある元のエリアの`GetEffectiveTotal`・ページ番号・突破判定は、Babeが無い場合と全く同じになる。Babeのエリア自身の「次」は、Babeの1つ上の画面が属するエリアとした
+- **元のエリアの総数（Babeが最後の画面にある場合だけ1減らす）**: Babeの画面はBabeのエリアとして解決されるため、元のエリアのページではない。そこで`GetLastAreaScreen`で、元のエリアの最後の画面（次のエリアと境界を共有する場合はその手前）がBabe画面なら、そこから1つずつ下げたものを元のエリアの最後の画面とする。例: エリアAが1〜10でBabeが10なら、Aの総数は9（`n/9`）、Babeは別エリア。Babe as AreaがOFFならBabeのエリアが無いので従来どおり10。Babeがエリアの途中にある場合は総数・ページ番号を変えない（前後のページ番号がずれないように）。ワープ時の突破判定（`MarkClearedIfOrderSequential`）にも、`end`ではなくこの最後の画面を渡す（Babeが`end`にあると`BestScreenIndex`が`end`に届かず、Babe直前のページからワープしても突破にならないため）。`FindNextLocation`はレベル本来の`Location`だけから探し、Babeのエリア自身の「次」は、Babeの1つ上の画面が属するエリアとした
 - **挑戦回数**: `AreaProgressStore.OnEnterArea`は保存用のキーと、登り/落ちの判定に使う位置を別の引数で受け取るようにした。通常はエリアの`start`同士を比べる（従来どおり）が、Babeは元のエリアの途中にあることが多く、元のエリアの`start`ではBabeの上下どちらにいたか分からないため、Babeが関わる移動では実際の画面番号同士を比べる（元のエリアの最上部からBabeに落ちても`Babe`の挑戦回数は増えない）
 - Babeに到達したら、その画面が属する元のエリアを突破済みにする（従来の仕様を維持、`MarkBabeContainingAreaCleared`）
 - **クリア時の取りこぼし対策**: 通常の登録は着地時にしか行わないため、ジャンプ中にBabeに触れてクリアした場合にBabeのエリアが未登録のまま履歴が作られうる。`BuildClearedRecord`の最初に、現在の画面がBabe画面で未処理なら着地判定を省いて処理する（`CatchUpBabeScreenOnClear`。Babe画面以外では何もしない）

@@ -273,8 +273,11 @@ namespace AreaInfoDisplayOnPause
                     // warp's destination isn't necessarily "next by start" even when it genuinely
                     // is the next area visited) and why it's safe against side paths. Placed after
                     // OnEnterArea so newExactArea's Order is already registered if this is the
-                    // first time it's ever been seen.
-                    AreaProgressStore.MarkClearedIfOrderSequential(s_currentLevelKey, GetAreaKey(s_lastExactArea.Value), s_lastExactArea.Value.end, newKey);
+                    // first time it's ever been seen. Uses the area's last screen of its own
+                    // (GetLastAreaScreen), not its raw end: a Babe on the end screen means
+                    // BestScreenIndex can never reach that end, so a warp from the area's real
+                    // last page would otherwise never count as clearing it.
+                    AreaProgressStore.MarkClearedIfOrderSequential(s_currentLevelKey, GetAreaKey(s_lastExactArea.Value), GetLastAreaScreen(s_lastExactArea.Value), newKey);
                 }
             }
 
@@ -312,9 +315,10 @@ namespace AreaInfoDisplayOnPause
         /// to a detour into some other area or gap.
         ///
         /// Only ever looks among the level's own Locations, so a Babe area sitting inside or
-        /// right after p_area never counts as p_area's "next" - which keeps both p_area's own
-        /// clear rule and GetEffectiveTotal's page count exactly what they'd be with no Babe
-        /// areas at all. For a Babe area itself, the "next" is whatever level Location the screen
+        /// right after p_area never counts as p_area's "next" - p_area is still only cleared by
+        /// reaching the level Location after it (or the Babe itself - see
+        /// MarkBabeContainingAreaCleared). A Babe on p_area's last screen is taken off its page
+        /// count separately, in GetLastAreaScreen. For a Babe area itself, the "next" is whatever level Location the screen
         /// right above it exact-matches: climbing out of the top of a Babe screen is finishing it.
         /// </summary>
         private static Location? FindNextLocation(Location p_area)
@@ -335,21 +339,40 @@ namespace AreaInfoDisplayOnPause
         }
 
         /// <summary>
-        /// area.end - area.unlock + 1, except when the next Location's range starts at or before
-        /// area.end (the two share a boundary screen, e.g. Redcrown Woods end=6 / Colossal Drain
-        /// start=6, unlock=6): once the next Location's own unlock is reached, the exact-match
-        /// resolver hands that shared screen to it instead (see LocationResolver), so area's last
-        /// real screen is one before that, not its own end.
+        /// The last screen that actually resolves to area itself. Normally area.end, except:
+        /// - when the next Location's range starts at or before area.end (the two share a boundary
+        ///   screen, e.g. Redcrown Woods end=6 / Colossal Drain start=6, unlock=6): once the next
+        ///   Location's own unlock is reached, the exact-match resolver hands that shared screen
+        ///   to it instead (see LocationResolver), so area's last real screen is one before that;
+        /// - when a Babe area (while enabled) sits on area's last screen(s): ResolveArea hands
+        ///   that screen to the Babe, so it isn't one of area's pages either. E.g. A = 1-10 with
+        ///   the Babe on 10 is a 9-page area plus the Babe. A Babe in the middle of area doesn't
+        ///   change this - area's pages keep their numbers around it.
+        /// A Babe area itself is just its own single screen.
         /// </summary>
-        private static int GetEffectiveTotal(Location area)
+        private static int GetLastAreaScreen(Location area)
         {
-            int effectiveEnd = area.end;
+            if (IsBabe(area))
+            {
+                return area.end;
+            }
+            int lastScreen = area.end;
             Location? nextLocation = FindNextLocation(area);
             if (nextLocation.HasValue && nextLocation.Value.start <= area.end)
             {
-                effectiveEnd = Math.Min(effectiveEnd, nextLocation.Value.unlock - 1);
+                lastScreen = Math.Min(lastScreen, nextLocation.Value.unlock - 1);
             }
-            return effectiveEnd - area.unlock + 1;
+            while (lastScreen > area.unlock && TryGetBabeLocation(lastScreen, out _))
+            {
+                lastScreen--;
+            }
+            return lastScreen;
+        }
+
+        /// <summary>Page count of area: unlock through GetLastAreaScreen.</summary>
+        private static int GetEffectiveTotal(Location area)
+        {
+            return GetLastAreaScreen(area) - area.unlock + 1;
         }
 
         public static string GetDisplayText()
