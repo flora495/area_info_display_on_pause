@@ -68,6 +68,12 @@ namespace AreaInfoDisplayOnPause
         }
 
         [MainMenuItemSetting]
+        public static BabeAsAreaToggle MainBabeAsAreaSetting(object factory, GuiFormat format)
+        {
+            return new BabeAsAreaToggle();
+        }
+
+        [MainMenuItemSetting]
         public static TextButton MainDetailShortcutSetting(object factory, GuiFormat format)
         {
             return DetailShortcutMenu.Create(factory);
@@ -105,6 +111,12 @@ namespace AreaInfoDisplayOnPause
         public static PersonalBestToggle PausePersonalBestSetting(object factory, GuiFormat format)
         {
             return new PersonalBestToggle();
+        }
+
+        [PauseMenuItemSetting]
+        public static BabeAsAreaToggle PauseBabeAsAreaSetting(object factory, GuiFormat format)
+        {
+            return new BabeAsAreaToggle();
         }
 
         /// <summary>

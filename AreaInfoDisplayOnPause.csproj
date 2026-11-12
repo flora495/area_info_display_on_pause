@@ -64,8 +64,10 @@
 	<ItemGroup>
 		<Compile Include="ModEntry.cs" />
 		<Compile Include="Settings.cs" />
+		<Compile Include="SettingToggle.cs" />
 		<Compile Include="AttemptCounterToggle.cs" />
 		<Compile Include="PersonalBestToggle.cs" />
+		<Compile Include="BabeAsAreaToggle.cs" />
 		<Compile Include="ProgressionDetailMenu.cs" />
 		<Compile Include="PagedTextMenu.cs" />
 		<Compile Include="DetailShortcut.cs" />

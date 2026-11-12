@@ -19,6 +19,13 @@ namespace AreaInfoDisplayOnPause
         public bool PersonalBestEnabled { get; set; } = true;
 
         /// <summary>
+        /// Whether the level's 3 Babe ending screens are tracked as areas of their own, all shown
+        /// as "Babe" (see AreaTracker.s_babeLocations). Off, they're just screens of whatever area
+        /// they sit in, with no special handling.
+        /// </summary>
+        public bool BabeAsAreaEnabled { get; set; } = true;
+
+        /// <summary>
         /// Keyboard key (Microsoft.Xna.Framework.Input.Keys value) that toggles the pause-info box
         /// between the normal display and Progression Detail. Empty while unbound (the default).
         /// Always replaced with a new array, never mutated in place - DetailShortcutButton spots
@@ -49,6 +56,7 @@ namespace AreaInfoDisplayOnPause
                 DisplayMode = ParseDisplayMode((string)root.Element("DisplayMode")),
                 AttemptCounterEnabled = (bool?)root.Element("AttemptCounterEnabled") ?? true,
                 PersonalBestEnabled = (bool?)root.Element("PersonalBestEnabled") ?? true,
+                BabeAsAreaEnabled = (bool?)root.Element("BabeAsAreaEnabled") ?? true,
                 KeyboardDetailShortcut = ParseKeys((string)root.Element("KeyboardDetailShortcut")),
                 PadDetailShortcut = ParseKeys((string)root.Element("PadDetailShortcut")),
                 PadDetailShortcutIsXInput = (bool?)root.Element("PadDetailShortcutIsXInput") ?? false,
@@ -61,6 +69,7 @@ namespace AreaInfoDisplayOnPause
                 new XElement("DisplayMode", DisplayMode),
                 new XElement("AttemptCounterEnabled", AttemptCounterEnabled),
                 new XElement("PersonalBestEnabled", PersonalBestEnabled),
+                new XElement("BabeAsAreaEnabled", BabeAsAreaEnabled),
                 new XElement("KeyboardDetailShortcut", string.Join(",", KeyboardDetailShortcut)),
                 new XElement("PadDetailShortcut", string.Join(",", PadDetailShortcut)),
                 new XElement("PadDetailShortcutIsXInput", PadDetailShortcutIsXInput))).Save(path);
@@ -75,6 +84,7 @@ namespace AreaInfoDisplayOnPause
             DisplayMode = TotalDisplayMode.AfterClear;
             AttemptCounterEnabled = true;
             PersonalBestEnabled = true;
+            BabeAsAreaEnabled = true;
             KeyboardDetailShortcut = new int[0];
             PadDetailShortcut = new int[0];
             PadDetailShortcutIsXInput = false;

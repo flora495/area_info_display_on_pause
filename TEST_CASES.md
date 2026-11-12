@@ -23,12 +23,12 @@
 
 ## 2. 設定項目の表示・基本動作
 
-- [x] メインメニューの設定一覧に「Show Total」「Attempt Counter」「Personal Best」「Detail Shortcut (KB: - / Pad: -)」「Reset to Default」「Beaten Maps」がこの順に表示される（mod全体を無効化する項目は無い）
-- [x] ポーズ中のメニュー（Mods → AreaInfoDisplayOnPause）には「Show Total」「Attempt Counter」「Personal Best」「Show Progression Detail」「Detail Shortcut (KB: - / Pad: -)」「Reset to Default」がこの順に表示される（「Progression Detail」のチェックボックスはもう無い）
-- [x] 設定ファイルが存在しない状態でゲームを起動すると、デフォルト値（Show Total=突破後に表示, Attempt Counter=ON, Personal Best=ON）で動作する
+- [x] メインメニューの設定一覧に「Show Total」「Attempt Counter」「Personal Best」「Babe as Area」「Detail Shortcut (KB: - / Pad: -)」「Reset to Default」「Beaten Maps」がこの順に表示される（mod全体を無効化する項目は無い）
+- [x] ポーズ中のメニュー（Mods → AreaInfoDisplayOnPause）には「Show Total」「Attempt Counter」「Personal Best」「Babe as Area」「Show Progression Detail」「Detail Shortcut (KB: - / Pad: -)」「Reset to Default」がこの順に表示される（「Progression Detail」のチェックボックスはもう無い）
+- [x] 設定ファイルが存在しない状態でゲームを起動すると、デフォルト値（Show Total=突破後に表示, Attempt Counter=ON, Personal Best=ON, Babe as Area=ON）で動作する
+- [x] Attempt Counter・Personal Best・Babe as Areaの3つのチェックボックスが、メイン・ポーズ両方のメニューで切り替えられ、表示（チェックの有無）が設定値と一致する（3つの共通処理を`SettingToggle`にまとめたための回帰確認）
 - [x] 各トグルを変更すると`F.AreaInfoDisplayOnPause.Settings.xml`に即座に反映される
 - [x] 設定を変更した状態でゲームを完全に再起動し、変更内容が保持されている
-~~- [ ] **Show Total**をNEVERにした状態でMods設定画面を開き、その場でAFTER CLEAR/ALWAYSに切り替えても、テキストが枠からはみ出さない・テキストの途中に不自然な隙間が空かない（メニューを開き直さなくても、その場で枠が正しく再計算される）~~
 
 ## 3. エリア表示の基本動作
 
@@ -61,14 +61,12 @@
 ## 6. Personal Best (PB)
 
 - [x] エリア1→エリア2と進むと、PBがエリア2側に更新される（エリア1のページ番号がエリア2より大きい数字でも、PBはエリア2になる。sorveillance breach 84->moonlight mansion 24でチェック）
-- [x] あるエリアの4枚目まで到達して5枚目に入っていない場合、PBが`エリア名 4`のように表示される（5ではない）
+- [x] 新規の画面が写っても、その画面内の足場に着地するまではPBは切り替わらない
 - [x] 一度PBになった後、そのエリアより下に落ちても、PB表示は変わらない（下がらない）
 - [x] まだどのエリアにも到達していない状態（レベル開始直後）では、PB行が表示されない
 - [x] **Personal Best**をOFFにすると、PB行が表示されなくなる
 
 ## 7. Progression Detail
-
-表示方法がオンデマンド（「Show Progression Detail」ボタン・Detail Shortcut）に変わり、ページ分けも入ったため、表示に関わる項目は新しい表示方法で確認し直す（出し方そのものは17章で確認する）。ラップタイムの扱い（記録のロジック）は変えていないため、確認済みのまま残している。
 
 - [x] 詳細表示では、「pb: エリア名 ページ番号」の行が一番上に表示される
 - [x] その下に、到達済みの全エリアが**最後に訪れたものから順に**（最初のエリアが一番下になるように）列挙される
@@ -102,15 +100,33 @@
 
 - [x] ワープを使って通常ではあり得ない順序でエリアに到達した場合の挙動を確認し、明らかな不整合（クラッシュ・PBの逆行など）が無いことだけ確認する（完全な正確性は保証されない仕様）
 
-## 12. Babe（エンディング）画面の特別表示
+## 12. Babe（エンディング）画面の独立エリア化（Babe as Area）
 
-- [x] バニラ本編で、42画面目（New Babe）にちょうどいる時、通常のエリア表示の代わりに`Babe`と表示される
-- [x] 同様に99画面目（New Babe Plus）・153画面目（Owl）でも`Babe`と表示される（3つとも区別せず同じ`Babe`）
-- [x] Babe画面にいる間、PB行（`PB: Babe`）・Progression Detailの`pb:`行も同様に`Babe`になる
-- [x] Babe画面から1画面でも離れる（先に進む・下に落ちる）と、**現在地表示**は通常のエリア表示に戻る。**PB行・`pb:`行**は、PBの実体（裏側で追跡しているエリア・ページ）がそのBabe画面のままなら`Babe`の表示を維持する（`Babe`は専用の状態ではなく、PBの結果がたまたまBabe画面に一致した時だけ表示上差し替えているだけ）
-- [x] Babeに到達した後、それまで訪れていない新しいエリアに入ると、PB行・`pb:`行は`Babe`から、その新しいエリアの表示（`エリア名 ページ`）に正しく更新される（Babeに到達しても裏側の扱いは通常のエリアと変わらないため）
-- [x] カスタムレベル（`level_settings.xml`に`ending_screen`/`ending_screen_second`/`ending_screen_third`があるもの）でも、該当画面で`Babe`が表示される
-- [x] Babe画面に到達すると、その画面が属する本来のエリア（例: `main babe`の`The Tower`4枚目がBabeの場合は`The Tower`自身）が「突破済み」になる（**Show Total = 突破後に表示**設定で、Babeから離れた後の`The Tower`の表示が`n/m`形式に切り替わっていることで確認）
+### Babe as Area = ON（既定）
+- [x] バニラ本編で、New BabeのBabe画面にちょうどいる時、現在地が`Babe`（Attempt Counter ONなら`Babe (#n)`）と表示される。ページ番号・総数は付かない
+- [x] 同様にNew Babe Plus・OwlのBabe画面でも`Babe`と表示される（3つとも区別せず同じ`Babe`）
+- [x] Babe画面に初めて着地した時点で、Progression Detailに`Babe (#1) 到達時刻`の行が独立して追加される
+- [x] Babe画面から下に落ちて、もう一度登ってBabe画面に着地すると、`Babe`の挑戦回数が`+1`される
+- [ ] Babeの上の画面から落ちてBabe画面に着地した場合は、`Babe`の挑戦回数は増えない
+- [x] Babeが元のエリアの最後の画面にある場合（例: エリアAが1〜10でBabeが10）、Aの総数が1つ減る（`n/9`）。Babe画面は`Babe`表示でAのページにならない
+- [x] 上と同じレベルでBabe as Area OFFにすると、Aの総数は従来どおり（`n/10`）で、10画面目は`A 10/10`と表示される
+- [ ] Babeが元のエリアの途中にある場合、Babe以外の画面では元のエリアのページ番号・総数がBabe as Area OFFの時と同じ
+- [ ] Babeが最後の画面にあるエリアで、Babeの1つ手前のページから次のエリアへワープして初めて到達すると、元のエリアが突破済みになる
+- [x] Babe画面に到達すると、その画面が属する元のエリアが「突破済み」になる（Show Total = AFTER CLEARで、元のエリアの表示が`n/m`形式に切り替わる）
+- [x] Babe到達後、PB行・`pb:`行が`Babe`になる。その後、新しいエリアに入るとPBはそちらに更新される
+- [x] マップをクリアすると、Beaten Mapsの詳細に`Babe (#n) 到達時刻`の行が含まれる（ジャンプ中にBabeに触れてクリアした場合も含む）
+- [ ] 元のエリアのstartがBabe画面と同じカスタムレベルでも、元のエリアとBabeが別々の行として記録される
+- [x] カスタムレベル（`level_settings.xml`に`ending_screen`/`ending_screen_second`/`ending_screen_third`があるもの）でも、該当画面が`Babe`として扱われる
+
+### Babe as Area = OFF
+- [x] Babe画面でも元のエリア名とページ番号（`The Tower 4/x`など）が表示され、Progression Detail・Beaten Mapsにも`Babe`の行は追加されない
+- [x] Babe画面に到達しても、元のエリアが突破済みにならない（特別扱いしない）
+
+### 切り替え
+- [x] プレイ途中でON→OFFにすると、すぐに表示が元のエリア名に戻る。それまでに記録された`Babe`の行は残る
+- [x] プレイ途中でOFF→ONにすると、Babe画面にいればすぐに`Babe`として記録される（挑戦回数は増えない）
+- [x] Reset to DefaultでONに戻る
+- [ ] **(既知の挙動の記録)** 「On the way...」の区間にいる時にBabe as Areaを切り替えてから既知のエリアに入ると、そのエリアの挑戦回数は増えない（切り替えで直前のエリアの記録が消えるため。エリアの中で切り替えた場合は影響なし）
 
 ## 13. カスタムマップごとに調査する
 - [x] main babe
@@ -151,7 +167,7 @@
 - [x] Give Up・ニューゲーム開始ではクリア履歴に記録が追加されず、既存のクリア履歴も消えない
 - [x] カスタムレベルでクリアした場合、一覧にそのレベル名が表示され、詳細にそのレベルのエリア名が表示される（そのレベルの購読を解除した後でも表示される）
 - [x] バニラ本編（New Game / New Babe+ / Ghost of the Babe）でクリアした場合、それぞれのモード名が一覧に表示される
-- [ ] 長いレベル名（25文字以上）が`...`で切り詰められ、一覧の枠が画面からはみ出さない
+- [x] 長いレベル名（25文字以上）が`...`で切り詰められ、一覧の枠が画面からはみ出さない
 - [x] エリア数の多いマップ（バニラ本編など）の詳細画面が画面内に収まる。1ページに収まらない時は、先頭に`Beaten Map 1/2`のようなページ表示が出て、`Next`/`Previous`でページを移動できる（17章の「詳細のページ分け」と同じ確認を、詳細画面でも行う）
 - [x] 1ページに収まる記録の詳細画面には、ページ表示・`Next`・`Previous`が出ない
 - [x] **上の2項目は、JKRuntime（Workshop 3793086563）を入れた状態と入れていない状態の両方で確認する**
@@ -207,14 +223,14 @@
 
 ## 18. Reset to Default
 
-- [ ] 各設定を既定値以外（Show Total=Always、Attempt Counter=OFF、Personal Best=OFF、Detail Shortcutを登録）にしてから「Reset to Default」を選ぶと、確認なしで即座に既定値（After Clear・ON・ON・未設定）に戻る
+- [x] 各設定を既定値以外（Show Total=Always、Attempt Counter=OFF、Personal Best=OFF、Babe as Area=OFF、Detail Shortcutを登録）にしてから「Reset to Default」を選ぶと、確認なしで即座に既定値（After Clear・ON・ON・ON・未設定）に戻る
 - [x] リセット後もカーソルは同じ設定一覧の「Reset to Default」に残り、各項目の表示（チェックボックス・Show Totalの選択肢・Detail Shortcutのラベル）がその場で既定値に変わる
 - [x] リセット後の値が設定ファイルに保存され、再起動後も既定値のまま
 - [x] メイン・ポーズ両方のメニューで動く
 - [ ] ポーズ中に詳細表示の状態でリセットすると、情報欄が通常表示に戻り、枠が文字に合った大きさに測り直される
 - [x] Personal Best=OFFの状態でポーズ中にリセットすると、情報欄にPB行が戻り、枠が測り直される
 - [x] リセットしても、進捗データ（挑戦回数・PB・突破済み）とクリア履歴（Beaten Maps）は消えない
-- [ ] タイトル画面でリセットしてからゲームを始めると、ポーズメニューの各項目も既定値で表示される
+- [x] タイトル画面でリセットしてからゲームを始めると、ポーズメニューの各項目も既定値で表示される
 - [x] ポーズメニューでDetail Shortcutを登録してからタイトル画面に戻ると、メインメニューのラベルにも登録したキーが表示される
 
 ## 19. キーの重なり（対処しない仕様の挙動の記録）
@@ -233,6 +249,8 @@
 
 ## 20. 旧版からの更新（既存ユーザーの置き換え）
 
+### 20-1. 「Progression Detail」チェックボックスがある版から
+
 旧版（「Progression Detail」チェックボックスがある版）を使っていた環境に、dllだけを置き換えて確認する。設定・進捗・クリア履歴のファイルはそのまま残しておく。
 
 - [x] 旧版の設定ファイル（`KeyboardDetailShortcut`/`PadDetailShortcut`の要素が無いもの）のまま起動しても、エラーにならず、Show Total・Attempt Counter・Personal Bestの値は保持され、Detail Shortcutは未設定（`-`）になる
@@ -243,3 +261,16 @@
 - [x] 何も設定しないまま遊ぶと、ポーズ画面の情報欄は旧版でProgression DetailをOFFにしていた時と同じ表示になり、勝手に詳細表示にならない
 - [x] `ModLoadLog.txt`にエラーが出ず、`crashlog.log`に新しい記録が無い
 - [ ] **(戻した時の互換性確認)** 新版で設定ファイルを保存した後（Detail Shortcutを登録した状態）、旧版のdllに戻して起動しても、エラーにならず、Show Total・Attempt Counter・Personal Bestの値が保持されている
+
+### 20-2. Babe as Area が無い版（Beaten Maps がある版）から
+
+Babe as Area が無い版を使っていた環境に、dllだけを置き換えて確認する。設定・進捗・クリア履歴のファイルはそのまま残しておく。
+
+- [x] 旧版の設定ファイル（`BabeAsAreaEnabled`の要素が無いもの）のまま起動しても、エラーにならず、他の設定の値は保持され、Babe as AreaはONになる
+- [x] メイン・ポーズ両方のメニューに、Attempt Counter・Personal Best・Babe as Areaのチェックボックスが表示される
+- [x] 旧版で記録した進捗データがそのまま読み込まれ、挑戦回数・突破済み・詳細表示の内容が更新前と同じ
+- [x] 旧版で記録したクリア履歴がそのまま「Beaten Maps」に表示される
+- [ ] 旧版でBabeに到達済みのプレイを続けた場合、`Babe`の行は後から追加されない（エラーにはならない）。PB行は、新しくBabeに到達するまで元のエリア名とページ（例: `The Tower 4`）で表示される
+- [ ] 旧版で保存したセーブをBabe画面の上で再開すると、その時点で`Babe`の行が追加され、PBが`Babe`になる（挑戦回数は増えない）
+- [x] `ModLoadLog.txt`にエラーが出ず、`crashlog.log`に新しい記録が無い
+- [ ] **(戻した時の互換性確認)** 新版でBabeに到達して保存した後、旧版のdllに戻して起動しても、エラーにならない（旧版ではBabeの行が`-43`のような数字で表示され、PBがBabeだった場合はPB行が出ないが、クラッシュはしない）

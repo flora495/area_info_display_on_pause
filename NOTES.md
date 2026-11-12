@@ -961,6 +961,20 @@ hide_pause_windowは別のmodなので、このmodにはhide_pause_windowのた�
 - Show Total: `IOptions.CurrentOption`を書き換える。setterが`OnOptionChange`を呼ぶため、`OnOptionChange`では設定値と同じなら保存しない（二重の書き込みを避ける）
 - Detail Shortcut: キーの配列は登録・リセットのたびに必ず新しい配列を入れる約束にしてあり、参照が変わった時だけラベルを作り直す
 
+## 新機能: Babeを独立したエリアとして扱う（Babe as Area）
+
+上記「Babe（エンディング）画面の特別表示」（表示だけの差し替え）を本格化し、3つのBabe画面を**それぞれ1画面だけの独立したエリア**として扱うようにした。到達時刻・挑戦回数・Progression Detail・クリア履歴（`ClearedHistory.xml`）のすべてで、通常のエリアと同じように1行として記録される。3つとも表記は`Babe`。設定`Babe as Area`（既定ON）でOFFにすると、Babe画面は特別扱いせず元のエリアの1画面として扱う（表示の差し替えも、Babe到達による元のエリアの突破済み化も行わない）。
+
+**仕組み（`AreaTracker`）**:
+- Babe画面ごとに`start = end = unlock = 画面番号`の`Location`を作る（`s_babeLocations`）。`name`には表示されない目印の文字列を入れて、レベル本来の`Location`と区別する（`IsBabe`）。レベル本来の一覧`s_sortedLocations`には混ぜない
+- 画面の解決は`ResolveArea`で、Babe画面なら必ずBabeのエリアを返し、それ以外は従来どおり`LocationResolver.Resolve`
+- **進捗データのキー**: Babeのエリアは`-画面番号`をキーにして`AreaProgressStore`に保存する（`GetAreaKey`）。レベル本来のエリアは従来どおり`start`。画面番号は1以上なので重ならない。Babe画面がちょうど別のエリアの`start`になっているカスタムレベルでも、両者が同じ行にまとまらない。名前の解決（`FindAreaName`）・PBの表示は、キーが負ならそれだけで`Babe`とする（設定をOFFにした後でも、それまでに記録された`Babe`の行は`Babe`と表示される）
+- **元のエリアの総数（Babeが最後の画面にある場合だけ1減らす）**: Babeの画面はBabeのエリアとして解決されるため、元のエリアのページではない。そこで`GetLastAreaScreen`で、元のエリアの最後の画面（次のエリアと境界を共有する場合はその手前）がBabe画面なら、そこから1つずつ下げたものを元のエリアの最後の画面とする。例: エリアAが1〜10でBabeが10なら、Aの総数は9（`n/9`）、Babeは別エリア。Babe as AreaがOFFならBabeのエリアが無いので従来どおり10。Babeがエリアの途中にある場合は総数・ページ番号を変えない（前後のページ番号がずれないように）。ワープ時の突破判定（`MarkClearedIfOrderSequential`）にも、`end`ではなくこの最後の画面を渡す（Babeが`end`にあると`BestScreenIndex`が`end`に届かず、Babe直前のページからワープしても突破にならないため）。`FindNextLocation`はレベル本来の`Location`だけから探し、Babeのエリア自身の「次」は、Babeの1つ上の画面が属するエリアとした
+- **挑戦回数**: `AreaProgressStore.OnEnterArea`は保存用のキーと、登り/落ちの判定に使う位置を別の引数で受け取るようにした。通常はエリアの`start`同士を比べる（従来どおり）が、Babeは元のエリアの途中にあることが多く、元のエリアの`start`ではBabeの上下どちらにいたか分からないため、Babeが関わる移動では実際の画面番号同士を比べる（元のエリアの最上部からBabeに落ちても`Babe`の挑戦回数は増えない）
+- Babeに到達したら、その画面が属する元のエリアを突破済みにする（従来の仕様を維持、`MarkBabeContainingAreaCleared`）
+- **クリア時の取りこぼし対策**: 通常の登録は着地時にしか行わないため、ジャンプ中にBabeに触れてクリアした場合にBabeのエリアが未登録のまま履歴が作られうる。`BuildClearedRecord`の最初に、現在の画面がBabe画面で未処理なら着地判定を省いて処理する（`CatchUpBabeScreenOnClear`。Babe画面以外では何もしない）
+- **設定の切り替え**: トグル・Reset to Defaultのどちらでも、`AreaTracker`が次に使われた時に設定値の変化に気づいて`s_babeLocations`を作り直し、直前のエリアの情報を捨てる（`EnsureBabeLocationsCurrent`）。次の`OnUpdate`で現在の画面がレベル開始時と同じく挑戦回数を増やさずに登録される
+
 ## 事象メモ: Give Up してもゲームのセーブが残り、このmodの進捗ファイルだけ消える（2026-10-16、環境要因・mod側は未対応）
 **症状**: ポーズメニューからGive Upした後、起動し直すと「続きから」でゲームを再開できた（本来はセーブが消える）。一方、このmodの進捗ファイル（`F.AreaInfoDisplayOnPause.AreaProgress.xml`）は消えていたため、ゲームは続きからなのに進捗だけリセットされた状態になった。
 
